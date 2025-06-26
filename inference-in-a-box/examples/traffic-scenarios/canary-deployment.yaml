@@ -1,0 +1,48 @@
+apiVersion: "serving.kserve.io/v1beta1"
+kind: "InferenceService"
+metadata:
+  name: "tensorflow-mnist-v2"
+  namespace: tenant-b
+spec:
+  predictor:
+    minReplicas: 0
+    maxReplicas: 2
+    scaleTarget: 60
+    scaleMetric: concurrency
+    tensorflow:
+      storageUri: "gs://kserve-examples/models/tensorflow/mnist/v2"
+      resources:
+        requests:
+          cpu: "100m"
+          memory: "256Mi"
+        limits:
+          cpu: "1"
+          memory: "1Gi"
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: tensorflow-mnist-split
+  namespace: tenant-b
+  labels:
+    serving.kserve.io/inferenceservice: tensorflow-mnist
+spec:
+  hosts:
+  - "*"
+  gateways:
+  - istio-system/inference-gateway
+  http:
+  - match:
+    - uri:
+        prefix: "/v2/models/tensorflow-mnist"
+    route:
+    - destination:
+        host: tensorflow-mnist-predictor-default.tenant-b.svc.cluster.local
+        port:
+          number: 80
+      weight: 90
+    - destination:
+        host: tensorflow-mnist-v2-predictor-default.tenant-b.svc.cluster.local
+        port:
+          number: 80
+      weight: 10

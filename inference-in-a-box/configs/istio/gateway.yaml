@@ -1,0 +1,44 @@
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: inference-gateway
+  namespace: istio-system
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - "*"
+---
+# Default routes to envoy-ai-gateway
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: inference-gateway-routes
+  namespace: istio-system
+spec:
+  hosts:
+  - "*"
+  gateways:
+  - inference-gateway
+  http:
+  - match:
+    - uri:
+        prefix: "/v2/models"
+    route:
+    - destination:
+        host: envoy-ai-gateway.envoy-ai-gateway.svc.cluster.local
+        port:
+          number: 80
+  - match:
+    - uri:
+        prefix: "/api"
+    route:
+    - destination:
+        host: envoy-ai-gateway.envoy-ai-gateway.svc.cluster.local
+        port:
+          number: 80
