@@ -1,0 +1,81 @@
+name: Test Bootstrap Script
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'scripts/bootstrap.sh'
+      - 'scripts/**/*.sh'
+      - '.github/workflows/bootstrap-test.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'scripts/bootstrap.sh'
+      - 'scripts/**/*.sh'
+      - '.github/workflows/bootstrap-test.yml'
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  test-bootstrap:
+    runs-on: ubuntu-latest
+    name: Test bootstrap.sh on Ubuntu
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Install Kind
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
+
+      - name: Build date
+        run: date
+
+      - name: Set script permissions
+        run: chmod +x scripts/bootstrap.sh scripts/**/*.sh
+
+      - name: Run bootstrap script (dry-run check)
+        run: |
+          # Only check if the script syntax is valid
+          bash -n scripts/bootstrap.sh
+        shell: bash
+
+      - name: Run limited bootstrap with key components
+        run: |
+          # Using a limited test mode to validate core functionality
+          # This avoids long-running deployments in CI while still testing the script
+          ./scripts/bootstrap.sh --ci-mode
+        shell: bash
+        env:
+          CI_MODE: true
+
+      - name: Verify cluster creation
+        run: |
+          kind get clusters
+          kubectl cluster-info
+        shell: bash
+
+      - name: Verify key component installation
+        run: |
+          kubectl get namespace
+          kubectl get pods -n kserve
+          kubectl get crds | grep 'inferenceservice'
+          kubectl get deployments -n kserve
+        shell: bash
+
+      - name: Test cleanup
+        if: always()
+        run: |
+          kind delete cluster --name inference-in-a-box || true
+        shell: bash
