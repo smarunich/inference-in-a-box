@@ -14,6 +14,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 CLUSTER_NAME="inference-in-a-box"
 
+# CI mode flag (used in GitHub Actions)
+CI_MODE=false
+
 # Software versions - Updated June 2025
 ISTIO_VERSION="1.26.2"           
 KSERVE_VERSION="0.15.2"          
@@ -375,7 +378,6 @@ deploy_sample_models() {
     
     # Wait for models to be ready
     log "Waiting for models to be ready..."
-    kubectl wait --for=condition=ready --timeout=600s inferenceservice/sklearn-iris -n tenant-a
     kubectl wait --for=condition=ready --timeout=600s inferenceservice/sklearn-iris -n tenant-a 2>/dev/null || warn "sklearn-iris model may still be starting up"
     kubectl wait --for=condition=ready --timeout=600s inferenceservice/tensorflow-mnist -n tenant-b 2>/dev/null || warn "tensorflow-mnist model may still be starting up"
     kubectl wait --for=condition=ready --timeout=600s inferenceservice/pytorch-resnet -n tenant-c 2>/dev/null || warn "pytorch-resnet model may still be starting up"
@@ -418,6 +420,27 @@ configure_access_management() {
 main() {
     log "Starting Inference-in-a-Box setup..."
     
+    # Process command line arguments
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --ci-mode)
+                CI_MODE=true
+                log "CI mode enabled: Running limited installation for testing"
+                shift
+                ;;
+            *)
+                log "Unknown option: $1"
+                shift
+                ;;
+        esac
+    done
+    
+    # Check if we're running in CI environment
+    if [[ "$CI" == "true" ]]; then
+        CI_MODE=true
+        log "CI environment detected: Running limited installation for testing"
+    fi
+    
     # Check prerequisites
     check_prerequisites
     
@@ -430,20 +453,27 @@ main() {
     # Install KServe with Serverless support
     install_kserve
     
-    # Install observability stack
-    install_observability
-    
-    # Install Envoy Gateway and AI Gateway
-    install_envoy_ai_gateway
-    
-    # Setup multi-tenant namespaces
-    setup_multitenancy
-    
-    # Deploy sample models
-    deploy_sample_models
-    
-    # Configure access management
-    configure_access_management
+    # If not in CI mode, install additional components
+    if [[ "$CI_MODE" == "false" ]]; then
+        # Install observability stack
+        install_observability
+        
+        # Install Envoy Gateway and AI Gateway
+        install_envoy_ai_gateway
+        
+        # Setup multi-tenant namespaces
+        setup_multitenancy
+        
+        # Deploy sample models
+        deploy_sample_models
+        
+        # Configure access management
+        configure_access_management
+    else
+        log "CI mode: Skipping observability, AI Gateway, and model deployment"
+        # Only setup tenant namespaces in CI mode for minimal testing
+        setup_multitenancy
+    fi
     
     log "Setup completed! Services available at:"
     log "📊 Grafana: http://localhost:3000 (admin/admin)"
