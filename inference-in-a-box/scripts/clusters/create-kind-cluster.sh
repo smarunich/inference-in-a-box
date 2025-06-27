@@ -52,7 +52,7 @@ create_cluster() {
         warn "Cluster ${CLUSTER_NAME} already exists"
     else
         log "Creating cluster: ${CLUSTER_NAME}"
-        kind create cluster --name ${CLUSTER_NAME} --config ${PROJECT_DIR}/configs/clusters/cluster.yaml
+        kind create cluster --name ${CLUSTER_NAME}
         success "Cluster created"
     fi
     
