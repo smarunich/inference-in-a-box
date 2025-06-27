@@ -76,7 +76,8 @@ graph TB
 #### KServe
 - **Version**: 0.15.0
 - **Role**: Serverless model serving for various ML frameworks
-- **Key Features**: Auto-scaling, multi-framework support, canary deployments
+- **Key Features**: Scale-to-zero, multi-framework support, canary deployments
+- **Deployment Mode**: Serverless (default)
 
 #### Knative Serving
 - **Version**: 1.14.1
@@ -156,11 +157,15 @@ The platform implements a zero-trust security architecture:
 
 ### Serverless Model Serving
 
-KServe provides serverless ML model serving:
+KServe provides serverless ML model serving with full scale-to-zero capability:
 
-1. **Auto-scaling**: Scale to zero when idle, scale up based on load
-2. **Multi-framework Support**: TensorFlow, PyTorch, scikit-learn, etc.
-3. **Model Lifecycle**: Versioning, canary, A/B testing
+1. **Scale-to-Zero**: Models scale to zero pods when not in use, consuming no resources
+2. **Auto-scaling**: Dynamic scaling based on request load and CPU/memory utilization
+3. **Cold-start Optimization**: Fast model loading with configurable grace periods
+4. **Multi-framework Support**: TensorFlow, PyTorch, scikit-learn, ONNX, etc.
+5. **Cost Efficiency**: Pay only for actual usage, ideal for diverse workloads
+6. **Model Lifecycle**: Versioning, canary deployments, A/B testing
+7. **Knative Integration**: Leverages Knative's serverless infrastructure
 
 ### Comprehensive Observability
 

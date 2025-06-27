@@ -1,0 +1,23 @@
+apiVersion: "serving.kserve.io/v1beta1"
+kind: "InferenceService"
+metadata:
+  name: "sklearn-iris"
+  namespace: "default"
+  annotations:
+    serving.kserve.io/deploymentMode: "Serverless"
+spec:
+  predictor:
+    model:
+      modelFormat:
+        name: sklearn
+      storageUri: "gs://kserve-examples/models/sklearn/1.0/model"
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 1
+          memory: 1Gi
+      containerConcurrency: 1
+      minReplicas: 0  # Scale to zero when no traffic
+      maxReplicas: 3  # Max scale up to 3 replicas

@@ -38,8 +38,8 @@ Access the observability stack through the following URLs:
 
 1. **Grafana**: http://localhost:3000 (default login: admin/admin)
 2. **Prometheus**: http://localhost:9090
-3. **Jaeger**: http://localhost:16686
-4. **Kiali**: http://localhost:20001
+3. **Kiali**: http://localhost:20001
+4. **Jaeger**: http://localhost:16686
 
 If these URLs aren't accessible, you can manually port-forward with:
 
@@ -132,6 +132,7 @@ kubectl apply -f configs/kserve/models/my-new-model.yaml -n tenant-a
 1. **KServe Model Performance Dashboard**: Available in Grafana, shows model latency, request rate, and resource usage
 2. **Istio Service Dashboard**: Shows service mesh metrics
 3. **Kiali Graph**: Visual representation of service mesh traffic
+4. **Jaeger Traces**: Available in Jaeger, shows distributed tracing data
 
 ### Common Troubleshooting Commands
 

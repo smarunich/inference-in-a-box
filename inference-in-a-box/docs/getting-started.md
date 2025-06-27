@@ -36,7 +36,7 @@ This script will:
 - Install KServe (v0.15.0)
 - Deploy the observability stack (Prometheus v2.50.1, Grafana v10.4.0, Jaeger v1.55.0, Kiali v2.11.0)
 - Configure security settings
-- Deploy the Envoy AI Gateway
+- Deploy the Envoy Gateway and Envoy AI Gateway
 
 The entire bootstrap process takes about 10-15 minutes to complete.
 
@@ -71,7 +71,6 @@ The bootstrap script automatically sets up port forwarding. You can access:
 - **Model Inference API**: http://localhost:8080/v2/models/
 - **Grafana**: http://localhost:3000 (admin/admin)
 - **Prometheus**: http://localhost:9090
-- **Jaeger**: http://localhost:16686
 - **Kiali**: http://localhost:20001
 
 ## Running the Demo

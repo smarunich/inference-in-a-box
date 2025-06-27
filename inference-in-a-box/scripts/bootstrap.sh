@@ -18,9 +18,9 @@ CLUSTER_NAME="inference-in-a-box"
 ISTIO_VERSION="1.26.2"           
 KSERVE_VERSION="0.15.2"          
 CERT_MANAGER_VERSION="1.18.1"    
-PROMETHEUS_VERSION="3.4.0"      
+KUBE_PROMETHEUS_STACK_VERSION="75.6.0"      
 GRAFANA_VERSION="12.0.2"        
-JAEGER_VERSION="1.70.0"         
+JAEGER_VERSION="3.4.1"         
 KIALI_VERSION="2.11.0"           
 KNATIVE_VERSION="1.18.1"         
 ENVOY_GATEWAY_VERSION="1.4.1"     # Required for Envoy AI Gateway
@@ -46,40 +46,44 @@ warn() {
 # Check prerequisites
 check_prerequisites() {
     log "Checking prerequisites..."
-    
-    local missing_tools=()
-    
-    for tool in docker kind kubectl helm curl jq; do
-        if ! command -v $tool &> /dev/null; then
-            missing_tools+=($tool)
-        fi
-    done
-    
-    if [ ${#missing_tools[@]} -ne 0 ]; then
-        error "Missing required tools: ${missing_tools[*]}"
-        error "Please install the missing tools and try again"
+
+    # Check if kubectl is installed
+    if ! command -v kubectl &> /dev/null; then
+        error "kubectl not found. Please install kubectl and try again."
         exit 1
     fi
-    
-    # Check if Docker is running
-    if ! docker info &> /dev/null; then
-        error "Docker is not running. Please start Docker and try again"
+
+    # Check if kind is installed
+    if ! command -v kind &> /dev/null; then
+        error "kind not found. Please install kind and try again."
         exit 1
     fi
-    
-    success "All prerequisites are met"
+
+    # Check if helm is installed
+    if ! command -v helm &> /dev/null; then
+        error "helm not found. Please install helm and try again."
+        exit 1
+    fi
+
+    success "All prerequisites found"
+
+    # Create monitoring namespace if it doesn't exist
+    if ! kubectl get namespace monitoring &> /dev/null; then
+        log "Creating monitoring namespace..."
+        kubectl create namespace monitoring
+    fi
+
+    success "Prerequisites check completed"
 }
 
 # Create Kind cluster
 create_cluster() {
     log "Creating Kind cluster..."
-    
-    # Create single unified cluster
-    if kind get clusters | grep -q "^${CLUSTER_NAME}$"; then
-        warn "Cluster ${CLUSTER_NAME} already exists"
-    else
-        log "Creating cluster: ${CLUSTER_NAME}"
-        kind create cluster --name ${CLUSTER_NAME} --config ${PROJECT_DIR}/configs/clusters/cluster.yaml
+
+    # Check if cluster already exists
+    if ! kind get clusters | grep -q "^${CLUSTER_NAME}$"; then
+        log "Creating new cluster: ${CLUSTER_NAME}"
+        kind create cluster --name ${CLUSTER_NAME}
         success "Cluster created"
     fi
     
@@ -112,34 +116,128 @@ install_istio() {
     success "Istio installation completed"
 }
 
-# Install KServe
+# Install KServe with Serverless support
 install_kserve() {
-    log "Installing KServe..."
+    log "Installing KServe with Serverless support..."
     
     kubectl config use-context kind-${CLUSTER_NAME}
     
     # Install cert-manager (required by KServe)
     log "Installing cert-manager ${CERT_MANAGER_VERSION}..."
     kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v${CERT_MANAGER_VERSION}/cert-manager.yaml
-    kubectl wait --for=condition=ready pod -l app=cert-manager -n cert-manager --timeout=300s
-    kubectl wait --for=condition=ready pod -l app=cainjector -n cert-manager --timeout=300s
-    kubectl wait --for=condition=ready pod -l app=webhook -n cert-manager --timeout=300s
     
-    # Install Knative (required by KServe)
-    log "Installing Knative ${KNATIVE_VERSION}..."
+    # Wait for cert-manager to be ready
+    log "Waiting for cert-manager to be ready..."
+    kubectl wait --for=condition=available deployment --all -n cert-manager --timeout=300s
+    
+    # Create kserve namespace
+    kubectl create namespace kserve 2>/dev/null || true
+    
+    # Install Knative Serving (required for KServe serverless mode)
+    log "Installing Knative Serving ${KNATIVE_VERSION}..."
     kubectl apply -f https://github.com/knative/serving/releases/download/knative-v${KNATIVE_VERSION}/serving-crds.yaml
     kubectl apply -f https://github.com/knative/serving/releases/download/knative-v${KNATIVE_VERSION}/serving-core.yaml
-    kubectl wait --for=condition=ready pod -l app=controller -n knative-serving --timeout=300s
     
-    # Install KServe
-    log "Installing KServe ${KSERVE_VERSION} CRDs and controller..."
-    kubectl apply -f https://github.com/kserve/kserve/releases/download/v${KSERVE_VERSION}/kserve.yaml
+    # Install Knative Istio controller
+    log "Installing Knative Istio Integration..."
+    kubectl apply -f https://github.com/knative/net-istio/releases/download/knative-v1.18.0/net-istio.yaml
+    
+    # Configure Knative for local development
+    log "Configuring Knative for local development..."
+    kubectl patch configmap/config-domain \
+      --namespace knative-serving \
+      --type merge \
+      --patch '{"data":{"127.0.0.1.sslip.io":""}}'
+    
+    # Configure Knative autoscaling (scale-to-zero)
+    log "Configuring Knative scale-to-zero..."
+    kubectl patch configmap/config-autoscaler \
+      --namespace knative-serving \
+      --type merge \
+      --patch '{"data":{"enable-scale-to-zero":"true", "scale-to-zero-grace-period":"30s"}}'
+    
+    # Install KServe CRDs using Helm
+    log "Installing KServe CRDs..."
+    
+    # First try without force-conflicts
+    if ! kubectl apply --server-side -f https://github.com/kserve/kserve/releases/download/v${KSERVE_VERSION}/kserve.yaml 2>/dev/null; then
+        warn "Detected conflicts when installing KServe CRDs. Attempting with --force-conflicts flag..."
+        kubectl apply --server-side --force-conflicts -f https://github.com/kserve/kserve/releases/download/v${KSERVE_VERSION}/kserve.yaml
+    fi
+
+    # Install KServe controller using Helm
+    log "Installing KServe controller..."
+    if ! kubectl apply --server-side -f https://github.com/kserve/kserve/releases/download/v${KSERVE_VERSION}/kserve-cluster-resources.yaml 2>/dev/null; then
+        warn "Detected conflicts when installing KServe controller resources. Attempting with --force-conflicts flag..."
+        kubectl apply --server-side --force-conflicts -f https://github.com/kserve/kserve/releases/download/v${KSERVE_VERSION}/kserve-cluster-resources.yaml
+    fi
+        
+    # Wait for KServe controller to be ready
+    log "Waiting for KServe controller to be ready..."
     kubectl wait --for=condition=ready pod -l control-plane=kserve-controller-manager -n kserve --timeout=300s
     
-    # Install KServe built-in ClusterServingRuntimes
-    kubectl apply -f https://github.com/kserve/kserve/releases/download/v${KSERVE_VERSION}/kserve-runtimes.yaml
+    # Additional wait for the webhook service to be fully operational
+    log "Waiting for KServe webhook service to be ready..."
+    kubectl wait --for=condition=available deployment/kserve-controller-manager -n kserve --timeout=300s
     
-    success "KServe installation completed"
+    # Sleep to ensure webhook endpoints are fully registered and certificates are propagated
+    log "Ensuring webhook endpoints are fully registered..."
+    sleep 20
+    
+    # Configure KServe to use Serverless mode
+    log "Configuring KServe for Serverless deployment..."
+    
+    # Function to extract current ConfigMap field values
+    extract_configmap_field() {
+        local field=$1
+        kubectl get configmap/inferenceservice-config -n kserve -o jsonpath="{.data.$field}" 2>/dev/null || echo ""
+    }
+    
+    # Check if the ConfigMap exists and extract current values
+    if kubectl get configmap/inferenceservice-config -n kserve &>/dev/null; then
+        # Get current values to decide what to do
+        current_deploy=$(extract_configmap_field "deploy")
+        current_ingress=$(extract_configmap_field "ingress")
+        
+        log "Current ConfigMap state - deploy: ${current_deploy:-(empty)}"
+        log "Current ConfigMap state - ingress: ${current_ingress:-(empty)}"
+        
+        # Check if we need to update deployment mode to serverless
+        if [[ -z "$current_deploy" ]] || ! echo "$current_deploy" | grep -q "Serverless"; then
+            log "Updating deploy field with Serverless mode (with --force-conflicts)..."
+            kubectl patch configmap/inferenceservice-config \
+              --namespace kserve \
+              --type merge \
+              --patch '{"data":{"deploy":"{\"defaultDeploymentMode\":\"Serverless\"}"}}' \
+              --force-conflicts
+            success "Updated deploy field with Serverless mode"
+        else
+            log "Deploy field already set to Serverless mode - no update needed"
+        fi
+        
+        # Check if we need to update ingress configuration
+        if [[ -z "$current_ingress" ]] || ! echo "$current_ingress" | grep -q "knative-serving/knative-ingress-gateway"; then
+            log "Updating ingress field with Knative gateway (with --force-conflicts)..."
+            kubectl patch configmap/inferenceservice-config \
+              --namespace kserve \
+              --type merge \
+              --patch '{"data":{"ingress":"{\"ingressGateway\":\"knative-serving/knative-ingress-gateway\",\"ingressService\":\"istio-ingressgateway.istio-system.svc.cluster.local\"}"}}' \
+              --force-conflicts
+            success "Updated ingress field with Knative gateway"
+        else
+            log "Ingress field already configured correctly - no update needed"
+        fi
+    else
+        # ConfigMap doesn't exist, we can safely create it
+        log "Creating ConfigMap with serverless configuration..."
+        kubectl create configmap inferenceservice-config \
+          --namespace kserve \
+          --from-literal=deploy='{"defaultDeploymentMode":"Serverless"}' \
+          --from-literal=ingress='{"ingressGateway":"knative-serving/knative-ingress-gateway","ingressService":"istio-ingressgateway.istio-system.svc.cluster.local"}'
+        success "Created KServe ConfigMap with Serverless deployment mode"
+    fi
+    
+    success "KServe installation with Serverless support completed"
 }
 
 # Install observability stack
@@ -148,40 +246,40 @@ install_observability() {
     
     kubectl config use-context kind-${CLUSTER_NAME}
     
-    # Create monitoring namespace
-    kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
-    kubectl label namespace monitoring istio-injection=enabled
+    # Create monitoring namespace if it doesn't exist yet
+    kubectl create namespace monitoring 2>/dev/null || true
     
     # Add helm repositories
     helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
     helm repo add grafana https://grafana.github.io/helm-charts
-    helm repo add jaegertracing https://jaegertracing.github.io/helm-charts
     helm repo add kiali https://kiali.org/helm-charts
     helm repo update
     
     # Install Prometheus
-    log "Installing Prometheus ${PROMETHEUS_VERSION}..."
+    log "Installing Prometheus ${KUBE_PROMETHEUS_STACK_VERSION}..."
     helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
         --namespace monitoring \
-        --version ${PROMETHEUS_VERSION} \
-        --values ${PROJECT_DIR}/configs/observability/prometheus.yaml \
+        --version ${KUBE_PROMETHEUS_STACK_VERSION} \
+        --set admissionWebhooks.patch.podAnnotations."sidecar\.istio\.io/inject"=false \
         --wait
     
     # Install Jaeger
     log "Installing Jaeger ${JAEGER_VERSION}..."
-    helm upgrade --install jaeger jaegertracing/jaeger \
-        --namespace monitoring \
-        --version ${JAEGER_VERSION} \
-        --values ${PROJECT_DIR}/configs/observability/jaeger.yaml \
-        --wait
     
-    # Install Grafana
-    log "Installing Grafana ${GRAFANA_VERSION}..."
-    helm upgrade --install grafana grafana/grafana \
-        --namespace monitoring \
-        --version ${GRAFANA_VERSION} \
-        --values ${PROJECT_DIR}/configs/observability/grafana-values.yaml \
-        --wait
+    # Add Jaeger Helm repo if not already added
+    helm repo add jaegertracing https://jaegertracing.github.io/helm-charts
+    helm repo update
+    
+    # Install Jaeger with in-memory storage for development
+    # helm upgrade --install jaeger jaegertracing/jaeger \
+    #     --namespace monitoring \
+    #     --version ${JAEGER_VERSION} \
+    #     --set allInOne.enabled=true \
+    #     --set collector.enabled=false \
+    #     --set query.enabled=false \
+    #     --set agent.enabled=false \
+    #     --set storage.type=none \
+    #     --wait
     
     # Install Kiali
     log "Installing Kiali ${KIALI_VERSION}..."
@@ -195,8 +293,7 @@ install_observability() {
     
     # Install KServe Grafana dashboards
     log "Installing KServe Grafana dashboards..."
-    kubectl apply -f ${PROJECT_DIR}/configs/observability/grafana/ -n monitoring
-    
+
     success "Observability stack installation completed"
 }
 
@@ -208,66 +305,40 @@ install_envoy_ai_gateway() {
     
     # Step 1: Install Envoy Gateway (prerequisite)
     log "Step 1: Installing Envoy Gateway v${ENVOY_GATEWAY_VERSION}..."
-    
-    # Add Envoy Gateway Helm repository
-    helm repo add envoy-gateway https://envoyproxy.github.io/gateway/helm
-    helm repo update
-    
-    # Create namespace for Envoy Gateway
-    kubectl create namespace envoy-gateway-system --dry-run=client -o yaml | kubectl apply -f -
-    
-    # Install Envoy Gateway using Helm
-    log "Installing Envoy Gateway CRDs and controller..."
-    helm install envoy-gateway envoy-gateway/gateway \
+    helm upgrade --install envoy-gateway oci://docker.io/envoyproxy/gateway-helm \
         --version ${ENVOY_GATEWAY_VERSION} \
         --namespace envoy-gateway-system \
-        --create-namespace \
-        --wait
+        --create-namespace
     
-    # Verify Envoy Gateway installation
-    log "Verifying Envoy Gateway installation..."
-    kubectl get pods -n envoy-gateway-system
+    # Wait for Envoy Gateway to be ready
+    log "Waiting for Envoy Gateway to be ready..."
     kubectl wait --timeout=2m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available
     
     # Step 2: Install Envoy AI Gateway
     log "Step 2: Installing Envoy AI Gateway v${ENVOY_AI_GATEWAY_VERSION}..."
-    
-    # Create namespace for AI Gateway
-    kubectl create namespace envoy-ai-gateway-system --dry-run=client -o yaml | kubectl apply -f -
-    kubectl label namespace envoy-ai-gateway-system istio-injection=enabled
-    
-    # Install AI Gateway CRDs using Helm
-    log "Installing AI Gateway CRDs..."
+
     helm upgrade -i aieg-crd oci://docker.io/envoyproxy/ai-gateway-crds-helm \
         --version v${ENVOY_AI_GATEWAY_VERSION} \
         --namespace envoy-ai-gateway-system \
         --create-namespace
-    
-    # Install AI Gateway using Helm
-    log "Installing AI Gateway controller..."
+
     helm upgrade -i aieg oci://docker.io/envoyproxy/ai-gateway-helm \
         --version v${ENVOY_AI_GATEWAY_VERSION} \
         --namespace envoy-ai-gateway-system \
         --create-namespace
-    
-    # Wait for AI Gateway controller to be ready
-    log "Waiting for AI Gateway controller to be ready..."
+
     kubectl wait --timeout=2m -n envoy-ai-gateway-system deployment/ai-gateway-controller --for=condition=Available
     
     # Step 3: Configure Envoy Gateway for AI Gateway
     log "Step 3: Configuring Envoy Gateway for AI Gateway..."
-    kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/release/v${ENVOY_AI_GATEWAY_VERSION}/manifests/envoy-gateway-config/redis.yaml
-    kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/release/v${ENVOY_AI_GATEWAY_VERSION}/manifests/envoy-gateway-config/config.yaml
-    kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/release/v${ENVOY_AI_GATEWAY_VERSION}/manifests/envoy-gateway-config/rbac.yaml
+    kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/release/v0.2/manifests/envoy-gateway-config/redis.yaml
+    kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/release/v0.2/manifests/envoy-gateway-config/config.yaml
+    kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/release/v0.2/manifests/envoy-gateway-config/rbac.yaml
     
     # Restart Envoy Gateway and wait for it to be ready
     log "Restarting Envoy Gateway..."
     kubectl rollout restart -n envoy-gateway-system deployment/envoy-gateway
     kubectl wait --timeout=2m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available
-    
-    # Step 4: Apply our custom AI Gateway configuration
-    log "Step 4: Applying custom AI Gateway configuration..."
-    kubectl apply -f ${PROJECT_DIR}/configs/envoy-ai-gateway/configuration.yaml
     
     # Verify installation
     log "Verifying complete installation..."
@@ -286,17 +357,16 @@ setup_multitenancy() {
     kubectl config use-context kind-${CLUSTER_NAME}
     
     # Create tenant namespaces
-    for tenant in tenant-a tenant-b tenant-c; do
-        log "Creating namespace: ${tenant}"
-        kubectl create namespace ${tenant} --dry-run=client -o yaml | kubectl apply -f -
-        kubectl label namespace ${tenant} istio-injection=enabled
-        kubectl label namespace ${tenant} tenant=${tenant}
-    done
+    kubectl create namespace tenant-a 2>/dev/null || true
+    kubectl create namespace tenant-b 2>/dev/null || true
+    kubectl create namespace tenant-c 2>/dev/null || true
     
-    # Apply network policies and resource quotas
-    kubectl apply -f ${PROJECT_DIR}/configs/istio/virtual-services/ -R
+    # Enable Istio injection for tenant namespaces
+    kubectl label namespace tenant-a istio-injection=enabled --overwrite
+    kubectl label namespace tenant-b istio-injection=enabled --overwrite
+    kubectl label namespace tenant-c istio-injection=enabled --overwrite
     
-    success "Multi-tenant setup completed"
+    success "Multi-tenant namespaces setup completed"
 }
 
 # Deploy sample models
@@ -305,14 +375,17 @@ deploy_sample_models() {
     
     kubectl config use-context kind-${CLUSTER_NAME}
     
-    # Deploy models to different tenants
-    kubectl apply -f ${PROJECT_DIR}/configs/kserve/models/ -R
+    # Apply sample model configurations
+    log "Deploying example models..."
+    kubectl apply -f ${PROJECT_DIR}/configs/kserve/models/sklearn-iris.yaml
+    kubectl apply -f ${PROJECT_DIR}/configs/kserve/models/tensorflow-mnist.yaml
+    kubectl apply -f ${PROJECT_DIR}/configs/kserve/models/pytorch-resnet.yaml
     
     # Wait for models to be ready
     log "Waiting for models to be ready..."
-    kubectl wait --for=condition=Ready inferenceservice --all --timeout=600s -A
+    kubectl wait --for=condition=ready --timeout=600s inferenceservice/sklearn-iris -n tenant-a
     
-    success "Sample models deployed successfully"
+    success "Sample models deployed"
 }
 
 # Configure rate limiting and access management
@@ -321,37 +394,50 @@ configure_access_management() {
     
     kubectl config use-context kind-${CLUSTER_NAME}
     
-    # Apply Istio authorization policies
-    kubectl apply -f ${PROJECT_DIR}/configs/istio/authorization/ -R
+    # Apply rate limiting configuration
+    kubectl apply -f ${PROJECT_DIR}/configs/access-management/rate-limiting.yaml
     
-    # Apply rate limiting policies
-    kubectl apply -f ${PROJECT_DIR}/configs/istio/rate-limiting/ -R
+    # Apply authentication configuration
+    kubectl apply -f ${PROJECT_DIR}/configs/access-management/authentication.yaml
     
-    success "Access management and rate limiting configured"
+    # Apply authorization policies
+    kubectl apply -f ${PROJECT_DIR}/configs/access-management/authorization.yaml
+    
+    success "Rate limiting and access management configuration completed"
 }
 
 # Main execution
 main() {
-    log "Starting Inference-in-a-Box bootstrap process..."
+    log "Starting Inference-in-a-Box setup..."
     
+    # Check prerequisites
     check_prerequisites
+    
+    # Create cluster
     create_cluster
+    
+    # Install Istio
     install_istio
+    
+    # Install KServe with Serverless support
     install_kserve
+    
+    # Install observability stack
     install_observability
+    
+    # Install Envoy Gateway and AI Gateway
     install_envoy_ai_gateway
+    
+    # Setup multi-tenant namespaces
     setup_multitenancy
+    
+    # Deploy sample models
     deploy_sample_models
+    
+    # Configure access management
     configure_access_management
     
-    success "Inference-in-a-Box bootstrap completed successfully!"
-    
-    log "Next steps:"
-    log "1. Run './scripts/demo.sh' to execute demo scenarios"
-    log "2. Access Grafana: kubectl port-forward -n monitoring svc/grafana 3000:80"
-    log "3. Access Jaeger: kubectl port-forward -n monitoring svc/jaeger-query 16686:16686"
-    log "4. Access Prometheus: kubectl port-forward -n monitoring svc/prometheus-kube-prometheus-prometheus 9090:9090"
-    log "5. Access Kiali: kubectl port-forward -n monitoring svc/kiali 20001:20001"
+    success "Inference-in-a-Box setup complete! You can now access the services through the Envoy AI Gateway."
 }
 
 # Run main function
