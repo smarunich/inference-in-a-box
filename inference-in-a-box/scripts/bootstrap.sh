@@ -65,15 +65,7 @@ check_prerequisites() {
         exit 1
     fi
 
-    success "All prerequisites found"
-
-    # Create monitoring namespace if it doesn't exist
-    if ! kubectl get namespace monitoring &> /dev/null; then
-        log "Creating monitoring namespace..."
-        kubectl create namespace monitoring
-    fi
-
-    success "Prerequisites check completed"
+    success "All prerequisites found and prerequisites check completed"
 }
 
 # Create Kind cluster
@@ -101,7 +93,6 @@ install_istio() {
     
     # Install Istio on the unified cluster
     kubectl config use-context kind-${CLUSTER_NAME}
-    log "Installing Istio..."
     
     # Download and install Istio
     if ! command -v istioctl &> /dev/null; then
@@ -246,7 +237,7 @@ install_observability() {
     
     kubectl config use-context kind-${CLUSTER_NAME}
     
-    # Create monitoring namespace if it doesn't exist yet
+    # Create monitoring namespace
     kubectl create namespace monitoring 2>/dev/null || true
     
     # Add helm repositories
@@ -280,6 +271,7 @@ install_observability() {
     #     --set agent.enabled=false \
     #     --set storage.type=none \
     #     --wait
+
     
     # Install Kiali
     log "Installing Kiali ${KIALI_VERSION}..."
@@ -384,26 +376,42 @@ deploy_sample_models() {
     # Wait for models to be ready
     log "Waiting for models to be ready..."
     kubectl wait --for=condition=ready --timeout=600s inferenceservice/sklearn-iris -n tenant-a
+    kubectl wait --for=condition=ready --timeout=600s inferenceservice/sklearn-iris -n tenant-a 2>/dev/null || warn "sklearn-iris model may still be starting up"
+    kubectl wait --for=condition=ready --timeout=600s inferenceservice/tensorflow-mnist -n tenant-b 2>/dev/null || warn "tensorflow-mnist model may still be starting up"
+    kubectl wait --for=condition=ready --timeout=600s inferenceservice/pytorch-resnet -n tenant-c 2>/dev/null || warn "pytorch-resnet model may still be starting up"
     
     success "Sample models deployed"
 }
 
-# Configure rate limiting and access management
+# Configure access management (placeholder for future implementation)
 configure_access_management() {
-    log "Configuring rate limiting and access management..."
+    log "Configuring access management..."
     
     kubectl config use-context kind-${CLUSTER_NAME}
     
-    # Apply rate limiting configuration
-    kubectl apply -f ${PROJECT_DIR}/configs/access-management/rate-limiting.yaml
+    # Check if access management configs exist, apply if available
+    if [ -f "${PROJECT_DIR}/configs/access-management/rate-limiting.yaml" ]; then
+        log "Applying rate limiting configuration..."
+        kubectl apply -f ${PROJECT_DIR}/configs/access-management/rate-limiting.yaml
+    else
+        warn "Rate limiting configuration not found - skipping"
+    fi
     
-    # Apply authentication configuration
-    kubectl apply -f ${PROJECT_DIR}/configs/access-management/authentication.yaml
+    if [ -f "${PROJECT_DIR}/configs/access-management/authentication.yaml" ]; then
+        log "Applying authentication configuration..."
+        kubectl apply -f ${PROJECT_DIR}/configs/access-management/authentication.yaml
+    else
+        warn "Authentication configuration not found - skipping"
+    fi
     
-    # Apply authorization policies
-    kubectl apply -f ${PROJECT_DIR}/configs/access-management/authorization.yaml
+    if [ -f "${PROJECT_DIR}/configs/access-management/authorization.yaml" ]; then
+        log "Applying authorization policies..."
+        kubectl apply -f ${PROJECT_DIR}/configs/access-management/authorization.yaml
+    else
+        warn "Authorization policies not found - skipping"
+    fi
     
-    success "Rate limiting and access management configuration completed"
+    success "Access management configuration completed"
 }
 
 # Main execution
@@ -437,7 +445,19 @@ main() {
     # Configure access management
     configure_access_management
     
-    success "Inference-in-a-Box setup complete! You can now access the services through the Envoy AI Gateway."
+    log "Setup completed! Services available at:"
+    log "📊 Grafana: http://localhost:3000 (admin/admin)"
+    log "🔍 Jaeger: http://localhost:16686"
+    log "📈 Prometheus: http://localhost:9090"
+    log "🗺️  Kiali: http://localhost:20001"
+    log ""  
+    log "To access services, run:"
+    log "kubectl port-forward -n monitoring svc/prometheus-grafana 3000:80 &"
+    log "kubectl port-forward -n monitoring svc/jaeger-query 16686:16686 &"
+    log "kubectl port-forward -n monitoring svc/prometheus-kube-prometheus-prometheus 9090:9090 &"
+    log "kubectl port-forward -n monitoring svc/kiali 20001:20001 &"
+    log ""
+    success "🎉 Inference-in-a-Box setup complete!"
 }
 
 # Run main function

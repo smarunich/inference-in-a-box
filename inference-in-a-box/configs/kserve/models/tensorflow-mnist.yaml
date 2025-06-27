@@ -10,11 +10,4 @@ spec:
     scaleTarget: 60
     scaleMetric: concurrency
     tensorflow:
-      storageUri: "https://storage.googleapis.com/tfserving-mnist-demo/mnist-tf-2.0.0.tar.gz"
-      resources:
-        requests:
-          cpu: "100m"
-          memory: "256Mi"
-        limits:
-          cpu: "1"
-          memory: "1Gi"
+      storageUri: "https://raw.githubusercontent.com/tduffy000/kfserving-uri-examples/master/tensorflow/frozen/model_artifacts.tar.gz"

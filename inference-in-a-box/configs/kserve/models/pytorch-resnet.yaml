@@ -10,11 +10,4 @@ spec:
     scaleTarget: 60
     scaleMetric: concurrency
     pytorch:
-      storageUri: "gs://kserve-examples/models/pytorch/resnet"
-      resources:
-        requests:
-          cpu: "100m"
-          memory: "256Mi"
-        limits:
-          cpu: "1"
-          memory: "1Gi"
+      storageUri: "gs://kfserving-examples/models/torchserve/image_classifier/v1"
