@@ -154,17 +154,10 @@ install_kserve() {
     log "Installing KServe CRDs..."
     
     # First try without force-conflicts
-    if ! kubectl apply --server-side -f https://github.com/kserve/kserve/releases/download/v${KSERVE_VERSION}/kserve.yaml 2>/dev/null; then
-        warn "Detected conflicts when installing KServe CRDs. Attempting with --force-conflicts flag..."
-        kubectl apply --server-side --force-conflicts -f https://github.com/kserve/kserve/releases/download/v${KSERVE_VERSION}/kserve.yaml
-    fi
+    kubectl apply -f https://github.com/knative/serving/releases/download/knative-v${KNATIVE_VERSION}/serving-crds.yaml
 
-    # Install KServe controller using Helm
     log "Installing KServe controller..."
-    if ! kubectl apply --server-side -f https://github.com/kserve/kserve/releases/download/v${KSERVE_VERSION}/kserve-cluster-resources.yaml 2>/dev/null; then
-        warn "Detected conflicts when installing KServe controller resources. Attempting with --force-conflicts flag..."
-        kubectl apply --server-side --force-conflicts -f https://github.com/kserve/kserve/releases/download/v${KSERVE_VERSION}/kserve-cluster-resources.yaml
-    fi
+    kubectl apply -f https://github.com/knative/serving/releases/download/knative-v${KNATIVE_VERSION}/serving-core.yaml
         
     # Wait for KServe controller to be ready
     log "Waiting for KServe controller to be ready..."
