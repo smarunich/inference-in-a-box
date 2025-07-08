@@ -150,18 +150,29 @@ install_kserve() {
       --type merge \
       --patch '{"data":{"enable-scale-to-zero":"true", "scale-to-zero-grace-period":"30s"}}'
     
-    # Install KServe CRDs using Helm
-    log "Installing KServe CRDs..."
-    
-    # First try without force-conflicts
+    # Install Knative Serving CRDs and Core (prerequisite for KServe)
+    log "Installing Knative Serving CRDs..."
     kubectl apply -f https://github.com/knative/serving/releases/download/knative-v${KNATIVE_VERSION}/serving-crds.yaml
 
-    log "Installing KServe controller..."
+    log "Installing Knative Serving core..."
     kubectl apply -f https://github.com/knative/serving/releases/download/knative-v${KNATIVE_VERSION}/serving-core.yaml
+    
+    # Wait for Knative Serving to be ready
+    log "Waiting for Knative Serving to be ready..."
+    kubectl wait --for=condition=ready pod -l app=controller -n knative-serving --timeout=300s
+    kubectl wait --for=condition=ready pod -l app=webhook -n knative-serving --timeout=300s
+    
+    # Install KServe CRDs using Helm
+    log "Installing KServe CRDs (this may take several minutes)..."
+    helm install kserve-crd oci://ghcr.io/kserve/charts/kserve-crd --version v${KSERVE_VERSION} --namespace kserve --create-namespace --wait --timeout=600s
+
+    log "Installing KServe controller..."
+    helm install kserve oci://ghcr.io/kserve/charts/kserve --version v${KSERVE_VERSION} --namespace kserve --create-namespace --wait --timeout=600s \
+        --set-string kserve.controller.deploymentMode="Serverless"
         
     # Wait for KServe controller to be ready
-    log "Waiting for KServe controller to be ready..."
-    kubectl wait --for=condition=ready pod -l control-plane=kserve-controller-manager -n kserve --timeout=300s
+    log "Waiting for KServe controller to be ready (this may take several minutes)..."
+    kubectl wait --for=condition=ready pod -l control-plane=kserve-controller-manager -n kserve --timeout=600s
     
     # Additional wait for the webhook service to be fully operational
     log "Waiting for KServe webhook service to be ready..."
