@@ -8,27 +8,26 @@ spec:
   - group: gateway.networking.k8s.io
     kind: Gateway
     name: ai-inference-gateway
-    namespace: envoy-gateway-system
   rateLimit:
     type: Global
     global:
       rules:
       # Per-tenant rate limiting
-      - matches:
+      - clientSelectors:
         - headers:
           - name: "x-tenant"
             value: "tenant-a"
         limit:
           requests: 100
           unit: Minute
-      - matches:
+      - clientSelectors:
         - headers:
           - name: "x-tenant"
             value: "tenant-b"
         limit:
           requests: 100
           unit: Minute
-      - matches:
+      - clientSelectors:
         - headers:
           - name: "x-tenant"
             value: "tenant-c"
@@ -42,18 +41,19 @@ spec:
   circuitBreaker:
     maxConnections: 100
     maxPendingRequests: 50
-    maxRequests: 200
-    maxRetries: 10
-    splitExternalLocalOriginErrors: true
+    maxParallelRequests: 200
+    maxParallelRetries: 10
   retry:
     numRetries: 3
-    backoffBaseInterval: 1s
-    backoffMaxInterval: 10s
     retryOn:
-    - "5xx"
-    - "reset"
-    - "connect-failure"
-    - "refused-stream"
+      httpStatusCodes:
+      - 500
+      - 502
+      - 503
+      - 504
+      triggers:
+      - "connect-failure"
+      - "refused-stream"
   timeout:
     tcp:
       connectTimeout: 10s
