@@ -12,18 +12,17 @@ Inference-in-a-Box uses KServe's Serverless deployment mode, which:
 
 ## Testing Serverless Capabilities
 
-### Deploy a Sample Serverless Model
+### Deployed Serverless Models
 
-1. Apply the sample InferenceService:
+The bootstrap script automatically deploys serverless models:
+
+1. **sklearn-iris** in tenant-a namespace
+2. **pytorch-resnet** in tenant-c namespace
+
+Verify the InferenceServices:
 
 ```bash
-kubectl apply -f examples/serverless/sklearn-iris-serverless.yaml
-```
-
-2. Verify the InferenceService is created:
-
-```bash
-kubectl get inferenceservices sklearn-iris -n default
+kubectl get inferenceservices --all-namespaces
 ```
 
 ### Observing Scale-to-Zero

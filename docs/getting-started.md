@@ -32,22 +32,28 @@ This script will:
 - Create a new Kind cluster named "inference-in-a-box"
 - Install Istio service mesh (v1.26.2)
 - Install Cert Manager (v1.18.1)
-- Install Knative Serving (v1.14.1)
-- Install KServe (v0.15.0)
-- Deploy the observability stack (Prometheus v2.50.1, Grafana v10.4.0, Jaeger v1.55.0, Kiali v2.11.0)
-- Configure security settings
-- Deploy the Envoy Gateway and Envoy AI Gateway
+- Install Knative Serving (v1.18.1)
+- Install KServe (v0.15.2)
+- Deploy the observability stack (Prometheus, Grafana, Kiali)
+- Deploy Envoy Gateway (v1.4.1) and Envoy AI Gateway (v0.2.1)
+- Deploy JWT server for authentication
+- Configure TLS certificates
+- Setup multi-tenant namespaces and deploy sample models
 
 The entire bootstrap process takes about 10-15 minutes to complete.
 
-3. **Setup security and multi-tenancy**
+3. **Access the platform**
 
 ```bash
-./scripts/security/setup-security.sh
+# Get JWT tokens for authentication
+./scripts/get-jwt-tokens.sh
+
+# Run interactive demos
+./scripts/demo.sh
 ```
 
-This script will:
-- Create tenant namespaces (tenant-a, tenant-b, tenant-c)
+The bootstrap script automatically:
+- Creates tenant namespaces (tenant-a, tenant-b, tenant-c)
 - Apply resource quotas
 - Configure network policies
 - Setup Istio authorization policies

@@ -9,45 +9,52 @@ Inference-in-a-Box is designed as a single unified Kubernetes cluster solution t
 ```mermaid
 graph TB
     subgraph "Kubernetes Cluster: inference-in-a-box"
-        subgraph "Istio Service Mesh"
+        subgraph "Gateway Layer"
             Gateway[Istio Gateway]
             EnvoyAI[Envoy AI Gateway]
+            JWTServer[JWT Server]
+        end
+        
+        subgraph "Service Mesh Layer"
+            Istiod[Istio Service Mesh]
             
             subgraph "Tenant A"
                 ModelA[sklearn-iris]
             end
             
-            subgraph "Tenant B"
-                ModelB[tensorflow-mnist]
+            subgraph "Tenant B" 
+                ModelB[Reserved]
             end
             
             subgraph "Tenant C"
                 ModelC[pytorch-resnet]
             end
-            
-            subgraph "Observability Stack"
-                Prometheus
-                Grafana
-                Jaeger
-                Kiali
-            end
-            
-            subgraph "Platform Services"
-                KServe[KServe Controller]
-                Knative[Knative Serving]
-                CertManager[Cert Manager]
-            end
+        end
+        
+        subgraph "Observability Stack"
+            Prometheus
+            Grafana
+            Kiali
+        end
+        
+        subgraph "Platform Services"
+            KServe[KServe Controller]
+            Knative[Knative Serving]
+            CertManager[Cert Manager]
+            DefaultBackend[Default Backend]
         end
     end
     
     Client[External Client] -->|HTTP/REST| Gateway
-    Gateway -->|Auth/Route| EnvoyAI
-    EnvoyAI -->|JWT Auth| ModelA
-    EnvoyAI -->|JWT Auth| ModelB
-    EnvoyAI -->|JWT Auth| ModelC
+    Gateway -->|Route| EnvoyAI
+    EnvoyAI -->|JWT Validation| JWTServer
+    JWTServer -->|JWKS| EnvoyAI
+    EnvoyAI -->|Authenticated| Istiod
+    Istiod -->|mTLS| ModelA
+    Istiod -->|mTLS| ModelC
     
     ModelA -->|Metrics| Prometheus
-    ModelB -->|Metrics| Prometheus
+    ModelC -->|Metrics| Prometheus
     ModelC -->|Metrics| Prometheus
     
     ModelA -->|Traces| Jaeger

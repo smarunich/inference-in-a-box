@@ -135,6 +135,11 @@ Before running the demos, ensure:
 
 ## 🔧 Current Configuration
 
+### AI Gateway Access
+- **Envoy AI Gateway**: `http://localhost:8080` (via Istio Gateway port-forward)
+- **JWT Server**: `http://localhost:8081` (for token retrieval)
+- **JWT Tokens**: Use `./scripts/get-jwt-tokens.sh` to retrieve authentication tokens
+
 ### Deployed Models
 - **sklearn-iris** (tenant-a): Iris classification model
 - **pytorch-resnet** (tenant-c): ResNet image classification model

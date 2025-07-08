@@ -65,14 +65,13 @@ graph TB
         MODELS[Model Registry]
     end
     
-    CLIENT --> EAG
+    CLIENT --> IG
+    IG --> EAG
     EAG --> AUTH
     AUTH --> RL
-    RL --> IG
-    IG --> MTLS
-    MTLS --> KS1
-    MTLS --> KS2
-    MTLS --> KS3
+    RL --> KS1
+    RL --> KS2
+    RL --> KS3
     
     P --> IC
     G --> P
@@ -88,6 +87,7 @@ graph TB
     KN --> KS3
     
     EG --> EAG
+    IC --> MTLS
 ```
 
 ## 🛠️ Technology Stack
