@@ -372,7 +372,7 @@ install_envoy_ai_gateway() {
     
     # Wait for gateway to be ready
     log "Waiting for AI Gateway to be ready..."
-    kubectl wait --timeout=300s -n envoy-gateway-system gateway/ai-inference-gateway --for=condition=Programmed
+    kubectl wait pods --timeout=2m -l gateway.envoyproxy.io/owning-gateway-name=ai-inference-gateway -n envoy-gateway-system --for=condition=Ready
     
     # Verify installation
     log "Verifying complete installation..."
