@@ -1,6 +1,6 @@
 # 🚀 Inference-in-a-Box: Enterprise AI/ML Platform Demo
 
-A complete, production-ready inference platform that demonstrates enterprise-grade AI/ML model serving using modern cloud-native technologies. This platform combines **Istio service mesh**, **KServe serverless model serving**, and **comprehensive observability** to create a robust, scalable, and secure inference-as-a-service solution.
+A complete, production-ready inference platform that demonstrates enterprise-grade AI/ML model serving using modern cloud-native technologies. This platform combines **Envoy AI Gateway**, **Istio service mesh**, **KServe serverless model serving**, and **comprehensive observability** to create a robust, scalable, and secure inference-as-a-service solution.
 
 ## 🎯 What You're Building
 
@@ -10,7 +10,7 @@ A complete, production-ready inference platform that demonstrates enterprise-gra
 - **⚡ Serverless Inference** - Auto-scaling from zero to N instances based on traffic demand
 - **🌐 Multi-Tenant Architecture** - Secure isolation between different teams, projects, and customers
 - **📊 Enterprise Observability** - Full-stack monitoring, distributed tracing, and AI-specific metrics
-- **🚪 Unified AI Gateway** - Single entry point for multiple AI providers and models
+- **🚪 Unified AI Gateway** - Envoy AI Gateway as the primary entry point with JWT authentication and intelligent routing
 - **🎛️ Traffic Management** - Canary deployments, A/B testing, and intelligent routing
 
 ## 🏗️ Platform Architecture
@@ -21,33 +21,34 @@ graph TB
         subgraph "Observability Stack"
             P[Prometheus]
             G[Grafana]
-            J[Jaeger]
             K[Kiali]
             AM[AlertManager]
         end
         
-        subgraph "Istio Service Mesh"
-            IC[Istiod]
-            IG[Istio Gateway]
+        subgraph "Gateway Layer (Tier-1)"
+            EG[Envoy Gateway]
+            EAG[Envoy AI Gateway]
+            AUTH[JWT Authentication]
+            RL[Rate Limiting]
         end
         
-        subgraph "AI Gateway Layer"
-            EAG[Envoy AI Gateway]
-            RLM[Rate Limiting]
-            AUTH[Authentication]
+        subgraph "Service Mesh Layer (Tier-2)"
+            IC[Istiod]
+            IG[Istio Gateway]
+            MTLS[mTLS Encryption]
         end
         
         subgraph "Multi-Tenant Namespaces"
             subgraph "Tenant A"
-                KS1[KServe Models]
+                KS1[sklearn-iris]
                 IS1[Istio Sidecar]
             end
             subgraph "Tenant B"
-                KS2[KServe Models]
+                KS2[Reserved]
                 IS2[Istio Sidecar]
             end
             subgraph "Tenant C"
-                KS3[KServe Models]
+                KS3[pytorch-resnet]
                 IS3[Istio Sidecar]
             end
         end
@@ -64,19 +65,18 @@ graph TB
         MODELS[Model Registry]
     end
     
-    CLIENT --> IG
-    IG --> EAG
+    CLIENT --> EAG
     EAG --> AUTH
-    AUTH --> RLM
-    RLM --> KS1
-    RLM --> KS2
-    RLM --> KS3
+    AUTH --> RL
+    RL --> IG
+    IG --> MTLS
+    MTLS --> KS1
+    MTLS --> KS2
+    MTLS --> KS3
     
     P --> IC
     G --> P
-    J --> IS1
-    J --> IS2
-    J --> IS3
+    K --> IC
     
     MODELS --> KS1
     MODELS --> KS2
@@ -86,14 +86,18 @@ graph TB
     KN --> KS1
     KN --> KS2
     KN --> KS3
+    
+    EG --> EAG
 ```
 
 ## 🛠️ Technology Stack
 
 ### Core Platform Components
 - **🐳 Kind** - Local Kubernetes cluster for development and testing
+- **🚪 Envoy Gateway** - Cloud-native API gateway with advanced routing capabilities
+- **🤖 Envoy AI Gateway** - AI-specific gateway with JWT authentication and model routing
 - **🕸️ Istio** - Service mesh for security, traffic management, and observability
-- **🤖 KServe** - Kubernetes-native model serving with auto-scaling
+- **🦾 KServe** - Kubernetes-native model serving with auto-scaling
 - **🌊 Knative** - Serverless framework for event-driven applications
 - **🔐 Cert Manager** - Automated certificate management
 
@@ -169,7 +173,8 @@ graph LR
 ```
 
 - **Serverless auto-scaling** from zero to N instances based on demand
-- **Multi-framework support** (TensorFlow, PyTorch, Scikit-learn, Hugging Face)
+- **Multi-framework support** (Scikit-learn, PyTorch, TensorFlow, Hugging Face)
+- **AI Gateway routing** with intelligent path-based and header-based routing
 - **Canary deployments** for gradual model rollouts
 - **A/B testing** with intelligent traffic splitting
 - **Model versioning** and rollback capabilities
@@ -244,11 +249,10 @@ cd inference-in-a-box
 
 # Access the platform
 echo "🎉 Platform is ready!"
-echo "📊 Grafana: http://localhost:3000 (admin/admin)"
-echo "🔍 Jaeger: http://localhost:16686"
+echo "📊 Grafana: http://localhost:3000 (admin/prom-operator)"
 echo "📈 Prometheus: http://localhost:9090"
 echo "🗺️ Kiali: http://localhost:20001"
-echo "🤖 Models: http://localhost:8080"
+echo "🤖 AI Gateway: http://localhost:8080"
 ```
 
 ### Step-by-Step Setup
@@ -257,6 +261,7 @@ echo "🤖 Models: http://localhost:8080"
 ./scripts/clusters/create-kind-cluster.sh
 
 # 2. Install core infrastructure
+./scripts/install/install-envoy-gateway.sh
 ./scripts/install/install-istio.sh
 ./scripts/install/install-kserve.sh
 ./scripts/install/install-observability.sh
@@ -318,6 +323,13 @@ inference-in-a-box/
 ├── configs/
 │   ├── clusters/
 │   │   └── cluster.yaml
+│   ├── envoy-gateway/
+│   │   ├── gatewayclass.yaml
+│   │   ├── ai-gateway.yaml
+│   │   ├── httproute.yaml
+│   │   ├── ai-backends.yaml
+│   │   ├── security-policies.yaml
+│   │   └── rate-limiting.yaml
 │   ├── istio/
 │   │   ├── installation.yaml
 │   │   ├── gateway.yaml
@@ -329,7 +341,6 @@ inference-in-a-box/
 │   │   └── configuration.yaml
 │   └── observability/
 │       ├── prometheus.yaml
-│       ├── jaeger.yaml
 │       └── grafana/
 ├── models/
 │   ├── sklearn-iris/
@@ -374,8 +385,9 @@ sequenceDiagram
 
 ### 2. ⚡ Auto-scaling Demo
 ```bash
-# Generate load to trigger auto-scaling
-./scripts/demo/load-test.sh --model sklearn-iris --duration 300s
+# The demo script automatically generates load through the AI Gateway
+./scripts/demo.sh
+# Select option 2 for auto-scaling demo
 
 # Watch pods scale from 0 to N
 watch "kubectl get pods -n tenant-a -l serving.kserve.io/inferenceservice=sklearn-iris"
@@ -383,8 +395,9 @@ watch "kubectl get pods -n tenant-a -l serving.kserve.io/inferenceservice=sklear
 
 ### 3. 🚦 Canary Deployment Demo
 ```bash
-# Deploy new model version with canary
-./scripts/demo/canary-deployment.sh --model tensorflow-mnist --version v2 --traffic 10%
+# The demo script creates a canary deployment for sklearn-iris
+./scripts/demo.sh
+# Select option 3 for canary deployment demo
 
 # Monitor traffic split
 kubectl get virtualservice -n tenant-a
@@ -392,8 +405,9 @@ kubectl get virtualservice -n tenant-a
 
 ### 4. 🌐 Multi-Tenant Isolation Demo
 ```bash
-# Deploy same model to different tenants
-./scripts/demo/multi-tenant.sh
+# The demo script shows tenant isolation and resource boundaries
+./scripts/demo.sh
+# Select option 4 for multi-tenant isolation demo
 
 # Verify isolation
 kubectl get networkpolicies -A
@@ -455,10 +469,63 @@ groups:
       summary: "Model service is down"
 ```
 
+## 🚪 AI Gateway Features
+
+### JWT Authentication & Authorization
+- **Tenant-specific JWT validation** with dedicated JWKS endpoints
+- **Automatic claim extraction** to request headers for downstream services
+- **Multi-provider support** for different authentication sources
+
+### Intelligent Routing
+- **Path-based routing** to different model services
+- **Header-based tenant routing** for multi-tenant isolation
+- **Fallback routing** to Istio Gateway for non-AI traffic
+
+### Rate Limiting & Traffic Management
+- **Per-tenant rate limiting** with configurable limits
+- **Global rate limiting** for platform protection
+- **Circuit breaker** patterns for resilience
+- **Retry policies** with exponential backoff
+
+### Security & Compliance
+- **CORS support** for web applications
+- **TLS termination** at the edge
+- **Security headers** injection
+- **Audit logging** for compliance requirements
+
+### Example API Usage
+```bash
+# Authenticated request to sklearn model
+curl -H "Authorization: Bearer <jwt-token>" \
+     http://localhost:8080/v1/models/sklearn-iris:predict \
+     -d '{"instances": [[5.1, 3.5, 1.4, 0.2]]}'
+
+# Authenticated request to pytorch model  
+curl -H "Authorization: Bearer <jwt-token>" \
+     http://localhost:8080/v1/models/pytorch-resnet:predict \
+     -d '{"instances": [[[0.1, 0.2, 0.3]]]}'
+```
+
 ## Getting Started
 
-See [docs/deployment-guide.md](docs/deployment-guide.md) for detailed setup instructions.
+See [demo.md](demo.md) for comprehensive demo instructions and [CLAUDE.md](CLAUDE.md) for detailed deployment guidance.
 
 ## Troubleshooting
 
-See [docs/troubleshooting.md](docs/troubleshooting.md) for common issues and solutions.
+### Common Issues
+- **Gateway not ready**: Check `kubectl get gateway -n envoy-gateway-system`
+- **JWT validation fails**: Verify JWKS endpoint is accessible
+- **Rate limiting**: Check rate limit policies and quotas
+- **Model not accessible**: Verify model is ready and routable
+
+### Verification Commands
+```bash
+# Check gateway status
+kubectl get gatewayclass,gateway,httproute -n envoy-gateway-system
+
+# Verify AI Gateway pods
+kubectl get pods -n envoy-gateway-system
+
+# Check model connectivity
+kubectl get inferenceservice --all-namespaces
+```
