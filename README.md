@@ -18,27 +18,20 @@ A complete, production-ready inference platform that demonstrates enterprise-gra
 ```mermaid
 graph TB
     subgraph "Inference-in-a-Box Cluster"
-        subgraph "Observability Stack"
-            P[Prometheus]
-            G[Grafana]
-            K[Kiali]
-            AM[AlertManager]
-        end
-        
-        subgraph "Gateway Layer (Tier-1)"
+        subgraph "Tier-1 Gateway Layer (Primary Entry Point)"
             EG[Envoy Gateway]
             EAG[Envoy AI Gateway]
             AUTH[JWT Authentication]
             RL[Rate Limiting]
         end
         
-        subgraph "Service Mesh Layer (Tier-2)"
+        subgraph "Tier-2 Service Mesh Layer"
             IC[Istiod]
             IG[Istio Gateway]
             MTLS[mTLS Encryption]
         end
         
-        subgraph "Multi-Tenant Namespaces"
+        subgraph "Multi-Tenant Model Serving"
             subgraph "Tenant A"
                 KS1[sklearn-iris]
                 IS1[Istio Sidecar]
@@ -53,10 +46,17 @@ graph TB
             end
         end
         
-        subgraph "KServe Infrastructure"
+        subgraph "Serverless Infrastructure"
             KC[KServe Controller]
             KN[Knative Serving]
             CM[Cert Manager]
+        end
+        
+        subgraph "Observability Stack"
+            P[Prometheus]
+            G[Grafana]
+            K[Kiali]
+            AM[AlertManager]
         end
     end
     
@@ -65,29 +65,48 @@ graph TB
         MODELS[Model Registry]
     end
     
-    CLIENT --> IG
-    IG --> EAG
-    EAG --> AUTH
-    AUTH --> RL
-    RL --> KS1
-    RL --> KS2
-    RL --> KS3
+    %% Primary Traffic Flow (Tier-1 → Tier-2)
+    CLIENT -->|HTTP/REST| EAG
+    EAG -->|JWT Validation| AUTH
+    AUTH -->|Authenticated| RL
+    RL -->|Rate Limited| IG
+    IG -->|mTLS Routing| KS1
+    IG -->|mTLS Routing| KS3
     
-    P --> IC
-    G --> P
-    K --> IC
+    %% Gateway Integration
+    EG -->|Controls| EAG
+    IC -->|Manages| IG
+    IC -->|Enables| MTLS
     
-    MODELS --> KS1
-    MODELS --> KS2
-    MODELS --> KS3
+    %% Model Serving Infrastructure
+    KC -->|Manages| KN
+    KN -->|Serves| KS1
+    KN -->|Serves| KS2
+    KN -->|Serves| KS3
     
-    KC --> KN
-    KN --> KS1
-    KN --> KS2
-    KN --> KS3
+    %% External Model Sources
+    MODELS -->|Deploys| KS1
+    MODELS -->|Deploys| KS2
+    MODELS -->|Deploys| KS3
     
-    EG --> EAG
-    IC --> MTLS
+    %% Observability Flow
+    KS1 -->|Metrics| P
+    KS2 -->|Metrics| P
+    KS3 -->|Metrics| P
+    IC -->|Mesh Metrics| P
+    P -->|Data| G
+    P -->|Data| K
+    
+    %% Styling
+    classDef tier1 fill:#e1f5fe,stroke:#0277bd,stroke-width:2px
+    classDef tier2 fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef models fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    classDef observability fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    
+    class EG,EAG,AUTH,RL tier1
+    class IC,IG,MTLS tier2
+    class KS1,KS2,KS3,KC,KN,CM models
+    class P,G,K,AM observability
 ```
 
 ## 🛠️ Technology Stack
