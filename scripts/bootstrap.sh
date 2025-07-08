@@ -343,6 +343,9 @@ install_envoy_ai_gateway() {
     
     # Step 4: Deploy Gateway Configurations
     log "Step 4: Deploying AI Gateway configurations..."
+
+    # Workaround for > Warning  FailedMount  15s (x6 over 31s)  kubelet            MountVolume.SetUp failed for volume "ai-gateway-ai-inference-gateway-envoy-gateway-system" : secret "ai-inference-gateway-envoy-gateway-system" not found
+    kubectl create secret generic ai-inference-gateway-envoy-gateway-system -n envoy-gateway-system
     
     # Apply GatewayClass
     kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/gatewayclass.yaml
