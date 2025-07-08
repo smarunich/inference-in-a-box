@@ -82,6 +82,12 @@ demo_autoscaling() {
     log "Current pods before load:"
     kubectl get pods -n tenant-a -l serving.kserve.io/inferenceservice=sklearn-iris
     
+    # Start port-forward for gateway
+    log "Starting port-forward for Istio gateway..."
+    kubectl port-forward -n istio-system svc/istio-ingressgateway 8080:80 &
+    GATEWAY_PF=$!
+    sleep 3
+    
     # Generate load in background
     log "Generating load to trigger auto-scaling for 60 seconds..."
     
@@ -90,7 +96,9 @@ demo_autoscaling() {
     
     # Use background process for load generation
     for i in {1..600}; do
-        curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8080/v2/models/sklearn-iris/infer \
+        curl -s -H "Authorization: Bearer $TOKEN" \
+            -H "Host: sklearn-iris.tenant-a.127.0.0.1.sslip.io" \
+            http://localhost:8080/v1/models/sklearn-iris:predict \
             -d '{"instances": [[5.1, 3.5, 1.4, 0.2]]}' > /dev/null &
         sleep 0.1
     done &
@@ -116,6 +124,9 @@ demo_autoscaling() {
     log "Pod status after load removed (should be scaling down):"
     kubectl get pods -n tenant-a -l serving.kserve.io/inferenceservice=sklearn-iris
     
+    # Clean up port-forward
+    kill $GATEWAY_PF 2>/dev/null || true
+    
     success "Auto-scaling Demo completed"
 }
 
@@ -124,38 +135,56 @@ demo_canary() {
     log "Running Canary Deployment Demo"
     
     # Check if the demo model exists
-    if ! kubectl get inferenceservice tensorflow-mnist -n tenant-b &>/dev/null; then
-        error "tensorflow-mnist model not found in tenant-b namespace"
+    if ! kubectl get inferenceservice sklearn-iris -n tenant-a &>/dev/null; then
+        error "sklearn-iris model not found in tenant-a namespace"
         return 1
     fi
     
     # Create canary version of the model (v2)
-    log "Creating canary version (v2) of tensorflow-mnist model with 10% traffic"
-    kubectl apply -f ${PROJECT_DIR}/examples/traffic-scenarios/canary-deployment.yaml
+    log "Creating canary version (v2) of sklearn-iris model with 10% traffic"
+    kubectl apply -f ${PROJECT_DIR}/examples/traffic-scenarios/sklearn-iris-canary.yaml
     
     # Wait for the canary deployment to be ready
     log "Waiting for canary deployment to be ready..."
-    kubectl wait --for=condition=Ready inferenceservice tensorflow-mnist-v2 -n tenant-b --timeout=300s
+    kubectl wait --for=condition=Ready inferenceservice sklearn-iris-v2 -n tenant-a --timeout=300s || warn "Canary deployment may still be starting up"
     
     # Show virtual service configuration
     log "VirtualService traffic split configuration:"
-    kubectl get virtualservice -n tenant-b -l serving.kserve.io/inferenceservice=tensorflow-mnist -o yaml | grep -A10 "weight"
+    kubectl get virtualservice -n tenant-a -l serving.kserve.io/inferenceservice=sklearn-iris -o yaml | grep -A10 "weight" || echo "VirtualService created"
     
     # Make requests to demonstrate traffic splitting
     log "Making 10 requests to show traffic splitting between main and canary:"
-    TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyLWIiLCJuYW1lIjoiVGVuYW50IEIgVXNlciIsInRlbmFudCI6InRlbmFudC1iIn0.xYKzRQIxgFcQguz4sBDt1M6ZaRPFBEPjjOvpwfEKjaE"
+    TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyLWEiLCJuYW1lIjoiVGVuYW50IEEgVXNlciIsInRlbmFudCI6InRlbmFudC1hIn0.8Xtgw_eSO-fTZexLFVXME5AQ_jJOf615P7VQGahNdDk"
+    
+    # First ensure the AI gateway is port-forwarded
+    kubectl port-forward -n istio-system svc/istio-ingressgateway 8080:80 &
+    GATEWAY_PF=$!
+    sleep 3
     
     for i in {1..10}; do
         echo -n "Request $i: "
-        RESPONSE=$(curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8080/v2/models/tensorflow-mnist/infer \
-            -d '{"instances": [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]]}')
-        echo "$RESPONSE" | grep -o '"model_name":[^,]*' || echo "Error in response"
+        RESPONSE=$(curl -s -H "Authorization: Bearer $TOKEN" \
+            -H "Host: sklearn-iris.tenant-a.127.0.0.1.sslip.io" \
+            http://localhost:8080/v1/models/sklearn-iris:predict \
+            -d '{"instances": [[5.1, 3.5, 1.4, 0.2]]}' || echo "Request failed")
+        echo "$RESPONSE" | jq -r '.predictions[0] // "No prediction"' 2>/dev/null || echo "Response: $RESPONSE"
         sleep 1
     done
     
+    # Clean up gateway port-forward
+    kill $GATEWAY_PF 2>/dev/null || true
+    
     # Clean up canary if desired
-    log "Canary deployment complete. To promote canary to 100%:"
-    echo "kubectl apply -f \${PROJECT_DIR}/examples/traffic-scenarios/canary-promotion.yaml"
+    log "Canary deployment complete. To clean up canary:"
+    echo "kubectl delete -f \${PROJECT_DIR}/examples/traffic-scenarios/sklearn-iris-canary.yaml"
+    
+    # Offer to clean up canary deployment
+    echo ""
+    read -p "Would you like to clean up the canary deployment? (y/n): " cleanup
+    if [[ $cleanup == "y" ]]; then
+        kubectl delete -f ${PROJECT_DIR}/examples/traffic-scenarios/sklearn-iris-canary.yaml || true
+        log "Canary deployment cleaned up"
+    fi
     
     success "Canary Deployment Demo completed"
 }
@@ -170,11 +199,22 @@ demo_multitenancy() {
     
     # Show network policies for isolation
     log "Network policies ensuring tenant isolation:"
-    kubectl get networkpolicy --all-namespaces
+    kubectl get networkpolicy --all-namespaces || echo "No network policies currently configured"
     
     # Show resource quotas for multi-tenancy
     log "Resource quotas for each tenant:"
-    kubectl get resourcequota --all-namespaces
+    kubectl get resourcequota --all-namespaces || echo "No resource quotas currently configured"
+    
+    # Show Istio policies for isolation
+    log "Istio Authorization Policies for tenant isolation:"
+    kubectl get authorizationpolicy --all-namespaces || echo "No authorization policies currently configured"
+    
+    # Show service accounts per tenant
+    log "Service accounts per tenant:"
+    for tenant in tenant-a tenant-b tenant-c; do
+        echo "--- $tenant ---"
+        kubectl get serviceaccount -n $tenant
+    done
     
     # Show models deployed in each tenant
     log "Models deployed in Tenant A:"
@@ -214,16 +254,25 @@ demo_observability() {
     # Wait for port-forwards to establish
     sleep 3
     
+    # Start gateway port-forward for traffic generation
+    kubectl port-forward -n istio-system svc/istio-ingressgateway 8080:80 &
+    GATEWAY_PF=$!
+    sleep 2
+    
     # Generate some traffic for metrics/traces
     log "Generating sample traffic for metrics and traces..."
     TOKEN_A="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyLWEiLCJuYW1lIjoiVGVuYW50IEEgVXNlciIsInRlbmFudCI6InRlbmFudC1hIn0.8Xtgw_eSO-fTZexLFVXME5AQ_jJOf615P7VQGahNdDk"
-    TOKEN_B="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyLWIiLCJuYW1lIjoiVGVuYW50IEIgVXNlciIsInRlbmFudCI6InRlbmFudC1iIn0.xYKzRQIxgFcQguz4sBDt1M6ZaRPFBEPjjOvpwfEKjaE"
+    TOKEN_C="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyLWMiLCJuYW1lIjoiVGVuYW50IEMgVXNlciIsInRlbmFudCI6InRlbmFudC1jIn0.example"
     
     for i in {1..10}; do
-        curl -s -H "Authorization: Bearer $TOKEN_A" http://localhost:8080/v2/models/sklearn-iris/infer \
+        curl -s -H "Authorization: Bearer $TOKEN_A" \
+            -H "Host: sklearn-iris.tenant-a.127.0.0.1.sslip.io" \
+            http://localhost:8080/v1/models/sklearn-iris:predict \
             -d '{"instances": [[5.1, 3.5, 1.4, 0.2]]}' > /dev/null
-        curl -s -H "Authorization: Bearer $TOKEN_B" http://localhost:8080/v2/models/tensorflow-mnist/infer \
-            -d '{"instances": [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]]}' > /dev/null
+        curl -s -H "Authorization: Bearer $TOKEN_C" \
+            -H "Host: pytorch-resnet.tenant-c.127.0.0.1.sslip.io" \
+            http://localhost:8080/v1/models/pytorch-resnet:predict \
+            -d '{"instances": [[[0.1, 0.2, 0.3]]]}' > /dev/null || true
         sleep 0.5
     done
     
@@ -243,7 +292,7 @@ demo_observability() {
     log "Press Ctrl+C when done exploring observability tools"
     
     # Wait for user to finish exploring
-    wait $PF1 $PF2 $PF3
+    wait $PF1 $PF2 $PF3 $GATEWAY_PF
 }
 
 # Main menu
