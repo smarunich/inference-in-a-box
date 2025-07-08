@@ -31,6 +31,11 @@ warn() {
     echo -e "${YELLOW}[$(date +'%Y-%m-%d %H:%M:%S')] ⚠ $1${NC}"
 }
 
+# Helper function to get AI Gateway service name dynamically
+get_ai_gateway_service() {
+    kubectl get svc -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=ai-inference-gateway -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "envoy-ai-gateway"
+}
+
 # Demo Functions
 
 # Demo 1: Security & Authentication
@@ -50,7 +55,8 @@ demo_security() {
     
     # Start port-forward for AI gateway (now the front gateway)
     log "Starting port-forward for Envoy AI Gateway..."
-    kubectl port-forward -n envoy-gateway-system svc/envoy-ai-gateway 8080:80 &
+    AI_GATEWAY_SERVICE=$(get_ai_gateway_service)
+    kubectl port-forward -n envoy-gateway-system svc/$AI_GATEWAY_SERVICE 8080:80 &
     GATEWAY_PF=$!
     sleep 3
     
@@ -82,7 +88,8 @@ demo_autoscaling() {
     
     # Start port-forward for AI gateway (now the front gateway)
     log "Starting port-forward for Envoy AI Gateway..."
-    kubectl port-forward -n envoy-gateway-system svc/envoy-ai-gateway 8080:80 &
+    AI_GATEWAY_SERVICE=$(get_ai_gateway_service)
+    kubectl port-forward -n envoy-gateway-system svc/$AI_GATEWAY_SERVICE 8080:80 &
     GATEWAY_PF=$!
     sleep 3
     
@@ -154,7 +161,8 @@ demo_canary() {
     TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyLWEiLCJuYW1lIjoiVGVuYW50IEEgVXNlciIsInRlbmFudCI6InRlbmFudC1hIn0.8Xtgw_eSO-fTZexLFVXME5AQ_jJOf615P7VQGahNdDk"
     
     # First ensure the AI gateway is port-forwarded
-    kubectl port-forward -n envoy-gateway-system svc/envoy-ai-gateway 8080:80 &
+    AI_GATEWAY_SERVICE=$(get_ai_gateway_service)
+    kubectl port-forward -n envoy-gateway-system svc/$AI_GATEWAY_SERVICE 8080:80 &
     GATEWAY_PF=$!
     sleep 3
     
@@ -251,7 +259,8 @@ demo_observability() {
     sleep 3
     
     # Start gateway port-forward for traffic generation
-    kubectl port-forward -n envoy-gateway-system svc/envoy-ai-gateway 8080:80 &
+    AI_GATEWAY_SERVICE=$(get_ai_gateway_service)
+    kubectl port-forward -n envoy-gateway-system svc/$AI_GATEWAY_SERVICE 8080:80 &
     GATEWAY_PF=$!
     sleep 2
     
