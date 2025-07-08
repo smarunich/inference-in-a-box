@@ -297,7 +297,7 @@ install_observability() {
 }
 
 # Install Envoy Gateway and Envoy AI Gateway
-install_envoy_ai_gateway() {
+install_envoy_gateway() {
     log "Installing Envoy Gateway v${ENVOY_GATEWAY_VERSION} and Envoy AI Gateway v${ENVOY_AI_GATEWAY_VERSION}..."
     
     kubectl config use-context kind-${CLUSTER_NAME}
@@ -312,7 +312,9 @@ install_envoy_ai_gateway() {
     # Wait for Envoy Gateway to be ready
     log "Waiting for Envoy Gateway to be ready..."
     kubectl wait --timeout=2m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available
-    
+}
+
+install_envoy_ai_gateway() {
     # Step 2: Install Envoy AI Gateway
     log "Step 2: Installing Envoy AI Gateway v${ENVOY_AI_GATEWAY_VERSION}..."
 
@@ -601,6 +603,9 @@ main() {
 
     # Install observability stack
     install_observability
+
+    # Install Envoy Gateway and AI Gateway
+    install_envoy_gateway
 
     # Deploy authentication services
     deploy_auth_services
