@@ -598,17 +598,18 @@ main() {
     
     # Install KServe with Serverless support
     install_kserve
+
+    # Install observability stack
+    install_observability
+
+    # Deploy authentication services
+    deploy_auth_services
+
+    # Install Envoy Gateway and AI Gateway
+    install_envoy_ai_gateway
     
     # If not in CI mode, install additional components
     if [[ "$CI_MODE" == "false" ]]; then
-        # Install observability stack
-        install_observability
-        
-        # Install Envoy Gateway and AI Gateway
-        install_envoy_ai_gateway
-        
-        # Deploy authentication services
-        deploy_auth_services
         
         # Setup multi-tenant namespaces
         setup_multitenancy
