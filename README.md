@@ -268,10 +268,13 @@ cd inference-in-a-box
 
 # Access the platform
 echo "🎉 Platform is ready!"
+echo "🤖 AI Gateway (Primary Entry): http://localhost:8080"
 echo "📊 Grafana: http://localhost:3000 (admin/prom-operator)"
 echo "📈 Prometheus: http://localhost:9090"
 echo "🗺️ Kiali: http://localhost:20001"
-echo "🤖 AI Gateway: http://localhost:8080"
+echo ""
+echo "💡 All AI/ML requests go through the AI Gateway first!"
+echo "   The AI Gateway handles JWT auth and routes to Istio Gateway"
 ```
 
 ### Step-by-Step Setup
@@ -488,6 +491,52 @@ groups:
       summary: "Model service is down"
 ```
 
+## 🌐 Traffic Flow Architecture
+
+### Tier-1/Tier-2 Gateway Design
+The platform implements a **two-tier gateway architecture** where external traffic first hits the **Envoy AI Gateway** (Tier-1) and then flows to the **Istio Gateway** (Tier-2) for service mesh routing:
+
+```mermaid
+sequenceDiagram
+    participant Client as 🖥️ Client Apps
+    participant EAG as 🤖 AI Gateway (Tier-1)
+    participant Auth as 🔐 JWT Auth
+    participant IG as 🕸️ Istio Gateway (Tier-2)
+    participant Model as 🎯 Model Service
+    
+    Client->>EAG: HTTP/REST Request
+    EAG->>Auth: Validate JWT Token
+    Auth-->>EAG: Token Valid (tenant-x)
+    EAG->>EAG: Apply Rate Limits
+    EAG->>EAG: Extract Model Name
+    EAG->>IG: Route to Service Mesh
+    IG->>Model: mTLS Encrypted Request
+    Model-->>IG: Inference Response
+    IG-->>EAG: Response via Service Mesh
+    EAG-->>Client: Final Response
+```
+
+### Primary Access Patterns
+1. **🎯 AI Model Inference**: `Client → AI Gateway → JWT Auth → Rate Limiting → Istio Gateway → Model Service`
+2. **📊 Observability**: `Client → AI Gateway → Istio Gateway → Monitoring Services`
+3. **🔧 Management**: `Client → AI Gateway → Istio Gateway → Admin Services`
+
+### Gateway Responsibilities
+
+#### 🚀 Tier-1: Envoy AI Gateway (Primary Entry Point)
+- **Authentication**: JWT token validation with JWKS
+- **Authorization**: Tenant-based access control
+- **Rate Limiting**: Per-tenant and global limits
+- **AI Protocol**: OpenAI-compatible API transformation
+- **Routing**: Model-aware intelligent routing
+
+#### 🕸️ Tier-2: Istio Gateway (Service Mesh)
+- **mTLS**: Service-to-service encryption
+- **Load Balancing**: Traffic distribution
+- **Circuit Breaking**: Fault tolerance
+- **Observability**: Metrics and tracing
+- **Service Discovery**: Dynamic routing
+
 ## 🚪 AI Gateway Features
 
 ### JWT Authentication & Authorization
@@ -496,7 +545,7 @@ groups:
 - **Multi-provider support** for different authentication sources
 
 ### Intelligent Routing
-- **Path-based routing** to different model services
+- **Model-aware routing** based on x-ai-eg-model header
 - **Header-based tenant routing** for multi-tenant isolation
 - **Fallback routing** to Istio Gateway for non-AI traffic
 
@@ -514,15 +563,30 @@ groups:
 
 ### Example API Usage
 ```bash
-# Authenticated request to sklearn model
-curl -H "Authorization: Bearer <jwt-token>" \
-     http://localhost:8080/v1/models/sklearn-iris:predict \
+# All requests go through the AI Gateway first (Tier-1 Entry Point)
+export AI_GATEWAY_URL="http://localhost:8080"
+export JWT_TOKEN="<your-jwt-token>"
+
+# Authenticated request to sklearn model (tenant-a)
+curl -H "Authorization: Bearer $JWT_TOKEN" \
+     -H "x-tenant: tenant-a" \
+     -H "x-ai-eg-model: sklearn-iris" \
+     $AI_GATEWAY_URL/v1/models/sklearn-iris:predict \
      -d '{"instances": [[5.1, 3.5, 1.4, 0.2]]}'
 
-# Authenticated request to pytorch model  
-curl -H "Authorization: Bearer <jwt-token>" \
-     http://localhost:8080/v1/models/pytorch-resnet:predict \
+# Authenticated request to pytorch model (tenant-c)
+curl -H "Authorization: Bearer $JWT_TOKEN" \
+     -H "x-tenant: tenant-c" \
+     -H "x-ai-eg-model: pytorch-resnet" \
+     $AI_GATEWAY_URL/v1/models/pytorch-resnet:predict \
      -d '{"instances": [[[0.1, 0.2, 0.3]]]}'
+
+# The AI Gateway handles:
+# 1. JWT validation and tenant authorization
+# 2. Rate limiting and traffic management  
+# 3. Model routing based on headers
+# 4. OpenAI protocol transformation
+# 5. Forwarding to Istio Gateway (Tier-2)
 ```
 
 ## Getting Started
