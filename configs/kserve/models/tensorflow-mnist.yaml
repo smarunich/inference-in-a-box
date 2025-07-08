@@ -10,4 +10,4 @@ spec:
     scaleTarget: 60
     scaleMetric: concurrency
     tensorflow:
-      storageUri: "https://raw.githubusercontent.com/tduffy000/kfserving-uri-examples/master/tensorflow/frozen/model_artifacts.tar.gz"
+      storageUri: "gs://kfserving-examples/models/tensorflow/mnist"
