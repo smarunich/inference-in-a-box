@@ -48,23 +48,21 @@ demo_security() {
     log "JWT Token for Tenant B User:"
     echo $TOKEN_USER_B | cut -d "." -f2 | base64 -d 2>/dev/null | jq . 2>/dev/null || echo "JWT: {\"sub\":\"user-b\",\"name\":\"Tenant B User\",\"tenant\":\"tenant-b\"}"
     
-    # Start port-forward for gateway
-    log "Starting port-forward for Istio gateway..."
-    kubectl port-forward -n istio-system svc/istio-ingressgateway 8080:80 &
+    # Start port-forward for AI gateway (now the front gateway)
+    log "Starting port-forward for Envoy AI Gateway..."
+    kubectl port-forward -n envoy-gateway-system svc/envoy-ai-gateway 8080:80 &
     GATEWAY_PF=$!
     sleep 3
     
     # Make authorized request to tenant A model
     log "Making authorized request to Tenant A model with correct token"
     curl -s -H "Authorization: Bearer $TOKEN_USER_A" \
-        -H "Host: sklearn-iris.tenant-a.127.0.0.1.sslip.io" \
         http://localhost:8080/v1/models/sklearn-iris:predict \
         -d '{"instances": [[5.1, 3.5, 1.4, 0.2]]}' | jq . 2>/dev/null || echo "Request completed"
     
     # Make unauthorized request to tenant C model with tenant A token  
     log "Making unauthorized request to Tenant C model with Tenant A token (should fail)"
     curl -s -H "Authorization: Bearer $TOKEN_USER_A" \
-        -H "Host: pytorch-resnet.tenant-c.127.0.0.1.sslip.io" \
         http://localhost:8080/v1/models/pytorch-resnet:predict \
         -d '{"instances": [[[0.1, 0.2, 0.3]]]}' | jq . 2>/dev/null || echo "Request failed as expected"
     
@@ -82,9 +80,9 @@ demo_autoscaling() {
     log "Current pods before load:"
     kubectl get pods -n tenant-a -l serving.kserve.io/inferenceservice=sklearn-iris
     
-    # Start port-forward for gateway
-    log "Starting port-forward for Istio gateway..."
-    kubectl port-forward -n istio-system svc/istio-ingressgateway 8080:80 &
+    # Start port-forward for AI gateway (now the front gateway)
+    log "Starting port-forward for Envoy AI Gateway..."
+    kubectl port-forward -n envoy-gateway-system svc/envoy-ai-gateway 8080:80 &
     GATEWAY_PF=$!
     sleep 3
     
@@ -97,8 +95,7 @@ demo_autoscaling() {
     # Use background process for load generation
     for i in {1..600}; do
         curl -s -H "Authorization: Bearer $TOKEN" \
-            -H "Host: sklearn-iris.tenant-a.127.0.0.1.sslip.io" \
-            http://localhost:8080/v1/models/sklearn-iris:predict \
+                http://localhost:8080/v1/models/sklearn-iris:predict \
             -d '{"instances": [[5.1, 3.5, 1.4, 0.2]]}' > /dev/null &
         sleep 0.1
     done &
@@ -157,15 +154,14 @@ demo_canary() {
     TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyLWEiLCJuYW1lIjoiVGVuYW50IEEgVXNlciIsInRlbmFudCI6InRlbmFudC1hIn0.8Xtgw_eSO-fTZexLFVXME5AQ_jJOf615P7VQGahNdDk"
     
     # First ensure the AI gateway is port-forwarded
-    kubectl port-forward -n istio-system svc/istio-ingressgateway 8080:80 &
+    kubectl port-forward -n envoy-gateway-system svc/envoy-ai-gateway 8080:80 &
     GATEWAY_PF=$!
     sleep 3
     
     for i in {1..10}; do
         echo -n "Request $i: "
         RESPONSE=$(curl -s -H "Authorization: Bearer $TOKEN" \
-            -H "Host: sklearn-iris.tenant-a.127.0.0.1.sslip.io" \
-            http://localhost:8080/v1/models/sklearn-iris:predict \
+                http://localhost:8080/v1/models/sklearn-iris:predict \
             -d '{"instances": [[5.1, 3.5, 1.4, 0.2]]}' || echo "Request failed")
         echo "$RESPONSE" | jq -r '.predictions[0] // "No prediction"' 2>/dev/null || echo "Response: $RESPONSE"
         sleep 1
@@ -255,7 +251,7 @@ demo_observability() {
     sleep 3
     
     # Start gateway port-forward for traffic generation
-    kubectl port-forward -n istio-system svc/istio-ingressgateway 8080:80 &
+    kubectl port-forward -n envoy-gateway-system svc/envoy-ai-gateway 8080:80 &
     GATEWAY_PF=$!
     sleep 2
     
@@ -266,12 +262,10 @@ demo_observability() {
     
     for i in {1..10}; do
         curl -s -H "Authorization: Bearer $TOKEN_A" \
-            -H "Host: sklearn-iris.tenant-a.127.0.0.1.sslip.io" \
-            http://localhost:8080/v1/models/sklearn-iris:predict \
+                http://localhost:8080/v1/models/sklearn-iris:predict \
             -d '{"instances": [[5.1, 3.5, 1.4, 0.2]]}' > /dev/null
         curl -s -H "Authorization: Bearer $TOKEN_C" \
-            -H "Host: pytorch-resnet.tenant-c.127.0.0.1.sslip.io" \
-            http://localhost:8080/v1/models/pytorch-resnet:predict \
+                http://localhost:8080/v1/models/pytorch-resnet:predict \
             -d '{"instances": [[[0.1, 0.2, 0.3]]]}' > /dev/null || true
         sleep 0.5
     done

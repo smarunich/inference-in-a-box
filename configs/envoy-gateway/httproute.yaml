@@ -1,0 +1,66 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: ai-inference-routes
+  namespace: envoy-gateway-system
+spec:
+  parentRefs:
+  - name: ai-inference-gateway
+    namespace: envoy-gateway-system
+  rules:
+  # Direct model routes with JWT authentication
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /v1/models/sklearn-iris
+      headers:
+      - name: authorization
+        type: RegularExpression
+        value: "Bearer .*"
+    filters:
+    - type: RequestHeaderModifier
+      requestHeaderModifier:
+        set:
+        - name: x-tenant
+          value: tenant-a
+        - name: x-gateway
+          value: ai-gateway
+    backendRefs:
+    - name: sklearn-iris-predictor-default
+      namespace: tenant-a
+      port: 80
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /v1/models/pytorch-resnet
+      headers:
+      - name: authorization
+        type: RegularExpression
+        value: "Bearer .*"
+    filters:
+    - type: RequestHeaderModifier
+      requestHeaderModifier:
+        set:
+        - name: x-tenant
+          value: tenant-c
+        - name: x-gateway
+          value: ai-gateway
+    backendRefs:
+    - name: pytorch-resnet-predictor-default
+      namespace: tenant-c
+      port: 80
+  # Fallback to Istio Gateway for other routes
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    filters:
+    - type: RequestHeaderModifier
+      requestHeaderModifier:
+        set:
+        - name: x-forwarded-by
+          value: ai-gateway
+    backendRefs:
+    - name: istio-ingressgateway
+      namespace: istio-system
+      port: 80

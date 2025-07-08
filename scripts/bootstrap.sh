@@ -339,12 +339,39 @@ install_envoy_ai_gateway() {
     kubectl rollout restart -n envoy-gateway-system deployment/envoy-gateway
     kubectl wait --timeout=2m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available
     
+    # Step 4: Deploy Gateway Configurations
+    log "Step 4: Deploying AI Gateway configurations..."
+    
+    # Apply GatewayClass
+    kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/gatewayclass.yaml
+    
+    # Apply AI Gateway configuration
+    kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/ai-gateway.yaml
+    
+    # Apply HTTPRoute for routing
+    kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/httproute.yaml
+    
+    # Apply AI service backends
+    kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/ai-backends.yaml
+    
+    # Apply security policies
+    kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/security-policies.yaml
+    
+    # Apply rate limiting policies
+    kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/rate-limiting.yaml
+    
+    # Wait for gateway to be ready
+    log "Waiting for AI Gateway to be ready..."
+    kubectl wait --timeout=300s -n envoy-gateway-system gateway/ai-inference-gateway --for=condition=Programmed
+    
     # Verify installation
     log "Verifying complete installation..."
     echo "Envoy Gateway pods:"
     kubectl get pods -n envoy-gateway-system
     echo "Envoy AI Gateway pods:"
     kubectl get pods -n envoy-ai-gateway-system
+    echo "Gateway configurations:"
+    kubectl get gatewayclass,gateway,httproute -n envoy-gateway-system
     
     success "Envoy Gateway and AI Gateway installation completed"
 }

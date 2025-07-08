@@ -1,0 +1,100 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: ai-inference-gateway
+  namespace: envoy-gateway-system
+spec:
+  gatewayClassName: ai-gateway-class
+  listeners:
+  - name: http
+    protocol: HTTP
+    port: 80
+    allowedRoutes:
+      namespaces:
+        from: All
+  - name: https
+    protocol: HTTPS
+    port: 443
+    allowedRoutes:
+      namespaces:
+        from: All
+    tls:
+      mode: Terminate
+      certificateRefs:
+      - kind: Secret
+        name: ai-gateway-tls
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: AIGateway
+metadata:
+  name: ai-inference-gateway
+  namespace: envoy-gateway-system
+spec:
+  targetRefs:
+  - group: gateway.networking.k8s.io
+    kind: Gateway
+    name: ai-inference-gateway
+    namespace: envoy-gateway-system
+  jwt:
+    providers:
+    - name: tenant-a-provider
+      issuer: "inference-in-a-box"
+      audiences:
+      - "tenant-a"
+      remoteJWKS:
+        uri: "http://jwt-server.default.svc.cluster.local:8080/.well-known/jwks.json"
+        timeout: 5s
+        cacheDuration: 300s
+    - name: tenant-b-provider
+      issuer: "inference-in-a-box"
+      audiences:
+      - "tenant-b"
+      remoteJWKS:
+        uri: "http://jwt-server.default.svc.cluster.local:8080/.well-known/jwks.json"
+        timeout: 5s
+        cacheDuration: 300s
+    - name: tenant-c-provider
+      issuer: "inference-in-a-box"
+      audiences:
+      - "tenant-c"
+      remoteJWKS:
+        uri: "http://jwt-server.default.svc.cluster.local:8080/.well-known/jwks.json"
+        timeout: 5s
+        cacheDuration: 300s
+  routes:
+  - name: sklearn-iris-route
+    match:
+      headers:
+      - name: "x-tenant"
+        value: "tenant-a"
+      path:
+        type: PathPrefix
+        value: "/v1/models/sklearn-iris"
+    backends:
+    - name: sklearn-iris-backend
+      fqdn: "sklearn-iris-predictor-default.tenant-a.svc.cluster.local"
+      port: 80
+      protocol: HTTP
+  - name: pytorch-resnet-route
+    match:
+      headers:
+      - name: "x-tenant"
+        value: "tenant-c"
+      path:
+        type: PathPrefix
+        value: "/v1/models/pytorch-resnet"
+    backends:
+    - name: pytorch-resnet-backend
+      fqdn: "pytorch-resnet-predictor-default.tenant-c.svc.cluster.local"
+      port: 80
+      protocol: HTTP
+  - name: default-istio-route
+    match:
+      path:
+        type: PathPrefix
+        value: "/"
+    backends:
+    - name: istio-gateway-backend
+      fqdn: "istio-ingressgateway.istio-system.svc.cluster.local"
+      port: 80
+      protocol: HTTP
