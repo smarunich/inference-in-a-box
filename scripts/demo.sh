@@ -334,5 +334,60 @@ main() {
     main
 }
 
-# Execute main menu
-main
+# Parse command line arguments
+if [ $# -eq 0 ]; then
+    # Interactive mode
+    main
+elif [ "$1" = "--demo" ] && [ $# -eq 2 ]; then
+    # Non-interactive mode for CI/CD
+    case "$2" in
+        "security") 
+            demo_security
+            success "Security demo completed successfully"
+            ;;
+        "autoscaling") 
+            demo_autoscaling
+            success "Auto-scaling demo completed successfully"
+            ;;
+        "canary") 
+            demo_canary
+            success "Canary deployment demo completed successfully"
+            ;;
+        "multitenancy") 
+            demo_multitenancy
+            success "Multi-tenancy demo completed successfully"
+            ;;
+        "observability") 
+            demo_observability
+            success "Observability demo completed successfully"
+            ;;
+        "all")
+            demo_security
+            demo_autoscaling
+            demo_canary
+            demo_multitenancy
+            demo_observability
+            success "All demos completed successfully"
+            ;;
+        *)
+            error "Invalid demo name: $2"
+            echo "Available demos: security, autoscaling, canary, multitenancy, observability, all"
+            exit 1
+            ;;
+    esac
+    
+    # Kill any background processes
+    pkill -f "port-forward" || true
+    exit 0
+else
+    echo "Usage: $0 [--demo <demo-name>]"
+    echo "  --demo security      Run security & authentication demo"
+    echo "  --demo autoscaling   Run auto-scaling demo"
+    echo "  --demo canary        Run canary deployment demo"
+    echo "  --demo multitenancy  Run multi-tenant isolation demo"
+    echo "  --demo observability Run observability demo"
+    echo "  --demo all           Run all demos"
+    echo ""
+    echo "Run without arguments for interactive mode"
+    exit 1
+fi

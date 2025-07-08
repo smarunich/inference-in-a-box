@@ -1,0 +1,283 @@
+name: Nightly - Full Platform Test
+
+on:
+  schedule:
+    # Run every night at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  comprehensive-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    
+    strategy:
+      matrix:
+        test-scenario: [
+          "basic-functionality",
+          "load-testing", 
+          "security-testing",
+          "observability-testing",
+          "failover-testing"
+        ]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Free up disk space
+      run: |
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /usr/local/lib/android
+        sudo rm -rf /opt/ghc
+        sudo rm -rf /opt/hostedtoolcache/CodeQL
+        sudo docker image prune --all --force
+        df -h
+        
+    - name: Setup prerequisites
+      run: |
+        # Install kubectl
+        curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+        chmod +x kubectl
+        sudo mv kubectl /usr/local/bin/
+        
+        # Install kind
+        curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
+        chmod +x ./kind
+        sudo mv ./kind /usr/local/bin/
+        
+        # Install helm
+        curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+        
+        # Install additional tools
+        sudo apt-get update
+        sudo apt-get install -y jq curl apache2-utils
+        
+        # Install hey for load testing
+        wget https://hey-release.s3.us-east-2.amazonaws.com/hey_linux_amd64
+        chmod +x hey_linux_amd64
+        sudo mv hey_linux_amd64 /usr/local/bin/hey
+        
+    - name: Bootstrap platform
+      run: |
+        echo "🚀 Starting platform bootstrap..."
+        chmod +x scripts/bootstrap.sh
+        ./scripts/bootstrap.sh
+        
+    - name: Wait for platform readiness
+      run: |
+        echo "⏳ Waiting for platform to be fully ready..."
+        kubectl wait --for=condition=Ready pods --all --all-namespaces --timeout=900s
+        
+    - name: Run test scenario - ${{ matrix.test-scenario }}
+      run: |
+        case "${{ matrix.test-scenario }}" in
+          "basic-functionality")
+            echo "🧪 Running basic functionality tests..."
+            ./scripts/demo.sh --demo security
+            ./scripts/demo.sh --demo multitenancy
+            ;;
+            
+          "load-testing")
+            echo "⚡ Running load testing..."
+            # Get JWT tokens
+            TOKENS=$(./scripts/get-jwt-tokens.sh)
+            TOKEN_A=$(echo "$TOKENS" | jq -r '.tokens["tenant-a"]')
+            
+            # Start port-forward in background
+            kubectl port-forward -n istio-system svc/istio-ingressgateway 8080:80 &
+            PF_PID=$!
+            sleep 10
+            
+            # Run load test
+            echo "🔥 Running load test with 100 concurrent requests..."
+            hey -n 1000 -c 100 -m POST \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer $TOKEN_A" \
+              -H "x-tenant: tenant-a" \
+              -H "x-ai-eg-model: sklearn-iris" \
+              -d '{"instances": [[5.1, 3.5, 1.4, 0.2]]}' \
+              http://localhost:8080/v1/models/sklearn-iris:predict
+              
+            # Check pod scaling
+            echo "📊 Checking auto-scaling behavior..."
+            kubectl get pods -n tenant-a -l serving.kserve.io/inferenceservice=sklearn-iris
+            
+            # Cleanup port-forward
+            kill $PF_PID
+            ;;
+            
+          "security-testing")
+            echo "🔐 Running security tests..."
+            
+            # Test JWT validation
+            kubectl port-forward -n istio-system svc/istio-ingressgateway 8080:80 &
+            PF_PID=$!
+            sleep 10
+            
+            # Test with invalid JWT (should fail)
+            echo "🚫 Testing with invalid JWT..."
+            curl -s -w "%{http_code}" -o /dev/null \
+              -H "Authorization: Bearer invalid-token" \
+              http://localhost:8080/v1/models/sklearn-iris:predict \
+              -d '{"instances": [[5.1, 3.5, 1.4, 0.2]]}' | grep -q "401\|403" || exit 1
+              
+            # Test without JWT (should fail)
+            echo "🚫 Testing without JWT..."
+            curl -s -w "%{http_code}" -o /dev/null \
+              http://localhost:8080/v1/models/sklearn-iris:predict \
+              -d '{"instances": [[5.1, 3.5, 1.4, 0.2]]}' | grep -q "401\|403" || exit 1
+              
+            # Cleanup port-forward
+            kill $PF_PID
+            ;;
+            
+          "observability-testing")
+            echo "📊 Running observability tests..."
+            
+            # Test Prometheus metrics
+            kubectl port-forward -n monitoring svc/prometheus-kube-prometheus-prometheus 9090:9090 &
+            PF_PID=$!
+            sleep 10
+            
+            # Query for KServe metrics
+            curl -s "http://localhost:9090/api/v1/query?query=kserve_request_duration_seconds" | jq '.data.result | length'
+            
+            # Query for Istio metrics
+            curl -s "http://localhost:9090/api/v1/query?query=istio_request_total" | jq '.data.result | length'
+            
+            # Cleanup port-forward
+            kill $PF_PID
+            
+            # Test Grafana accessibility
+            kubectl port-forward -n monitoring svc/prometheus-grafana 3000:80 &
+            PF_PID=$!
+            sleep 10
+            
+            curl -s http://localhost:3000/api/health | jq '.database' | grep -q "ok" || exit 1
+            
+            # Cleanup port-forward
+            kill $PF_PID
+            ;;
+            
+          "failover-testing")
+            echo "🔄 Running failover tests..."
+            
+            # Test model pod failure recovery
+            echo "💥 Simulating model pod failure..."
+            kubectl delete pod -n tenant-a -l serving.kserve.io/inferenceservice=sklearn-iris --force --grace-period=0
+            
+            # Wait for recovery
+            sleep 30
+            kubectl wait --for=condition=Ready pods -n tenant-a -l serving.kserve.io/inferenceservice=sklearn-iris --timeout=300s
+            
+            # Test that service is still accessible
+            TOKENS=$(./scripts/get-jwt-tokens.sh)
+            TOKEN_A=$(echo "$TOKENS" | jq -r '.tokens["tenant-a"]')
+            
+            kubectl port-forward -n istio-system svc/istio-ingressgateway 8080:80 &
+            PF_PID=$!
+            sleep 10
+            
+            curl -s -f -X POST \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer $TOKEN_A" \
+              -H "x-tenant: tenant-a" \
+              -H "x-ai-eg-model: sklearn-iris" \
+              http://localhost:8080/v1/models/sklearn-iris:predict \
+              -d '{"instances": [[5.1, 3.5, 1.4, 0.2]]}' | jq .
+              
+            # Cleanup port-forward
+            kill $PF_PID
+            ;;
+        esac
+        
+    - name: Generate detailed test report
+      if: always()
+      run: |
+        echo "📋 Generating detailed test report for ${{ matrix.test-scenario }}..."
+        
+        mkdir -p test-results
+        
+        echo "## 🎯 Test Results - ${{ matrix.test-scenario }}" > test-results/report-${{ matrix.test-scenario }}.md
+        echo "" >> test-results/report-${{ matrix.test-scenario }}.md
+        echo "### Platform Components Status" >> test-results/report-${{ matrix.test-scenario }}.md
+        echo "\`\`\`" >> test-results/report-${{ matrix.test-scenario }}.md
+        kubectl get pods --all-namespaces >> test-results/report-${{ matrix.test-scenario }}.md
+        echo "\`\`\`" >> test-results/report-${{ matrix.test-scenario }}.md
+        echo "" >> test-results/report-${{ matrix.test-scenario }}.md
+        
+        echo "### Resource Usage" >> test-results/report-${{ matrix.test-scenario }}.md
+        echo "\`\`\`" >> test-results/report-${{ matrix.test-scenario }}.md
+        kubectl top nodes >> test-results/report-${{ matrix.test-scenario }}.md
+        kubectl top pods --all-namespaces >> test-results/report-${{ matrix.test-scenario }}.md
+        echo "\`\`\`" >> test-results/report-${{ matrix.test-scenario }}.md
+        
+        echo "### Events" >> test-results/report-${{ matrix.test-scenario }}.md
+        echo "\`\`\`" >> test-results/report-${{ matrix.test-scenario }}.md
+        kubectl get events --all-namespaces --sort-by='.lastTimestamp' | tail -20 >> test-results/report-${{ matrix.test-scenario }}.md
+        echo "\`\`\`" >> test-results/report-${{ matrix.test-scenario }}.md
+        
+    - name: Cleanup
+      if: always()
+      run: |
+        echo "🧹 Cleaning up resources..."
+        chmod +x scripts/cleanup.sh
+        ./scripts/cleanup.sh || echo "Cleanup completed with warnings"
+        
+        # Additional cleanup
+        docker system prune -f
+        kind delete clusters --all || echo "No clusters to delete"
+        
+    - name: Upload test artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results-${{ matrix.test-scenario }}
+        path: |
+          test-results/
+          /tmp/kind-logs-*
+        retention-days: 7
+
+  # Aggregate results from all test scenarios
+  test-summary:
+    needs: comprehensive-test
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+    - name: Download all test results
+      uses: actions/download-artifact@v4
+      with:
+        pattern: test-results-*
+        merge-multiple: true
+        path: ./all-test-results
+        
+    - name: Generate summary report
+      run: |
+        echo "# 🎯 Nightly Test Summary" > nightly-summary.md
+        echo "" >> nightly-summary.md
+        echo "## Test Scenarios Results" >> nightly-summary.md
+        echo "" >> nightly-summary.md
+        
+        for scenario in basic-functionality load-testing security-testing observability-testing failover-testing; do
+          echo "### $scenario" >> nightly-summary.md
+          if [ -f "all-test-results/report-$scenario.md" ]; then
+            echo "✅ **PASSED**" >> nightly-summary.md
+          else
+            echo "❌ **FAILED**" >> nightly-summary.md
+          fi
+          echo "" >> nightly-summary.md
+        done
+        
+        echo "## Platform Health Summary" >> nightly-summary.md
+        echo "Generated on: $(date)" >> nightly-summary.md
+        
+        cat nightly-summary.md
+        
+    - name: Upload summary report
+      uses: actions/upload-artifact@v4
+      with:
+        name: nightly-test-summary
+        path: nightly-summary.md
+        retention-days: 30

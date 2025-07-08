@@ -1,0 +1,219 @@
+name: PR Validation - Quick Tests
+
+on:
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  validate-configs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install kubectl
+      run: |
+        curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+        chmod +x kubectl
+        sudo mv kubectl /usr/local/bin/
+        
+    - name: Install kind
+      run: |
+        curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
+        chmod +x ./kind
+        sudo mv ./kind /usr/local/bin/
+        
+    - name: Install helm
+      run: |
+        curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+        
+    - name: Validate YAML syntax
+      run: |
+        echo "🔍 Validating YAML syntax..."
+        
+        # Check all YAML files for syntax errors
+        find . -name "*.yaml" -o -name "*.yml" | while read file; do
+          echo "Checking $file..."
+          python -c "import yaml; yaml.safe_load(open('$file'))" || exit 1
+        done
+        
+        echo "✅ All YAML files have valid syntax"
+        
+    - name: Validate scripts
+      run: |
+        echo "🔍 Validating shell scripts..."
+        
+        # Check shell scripts for syntax errors
+        find . -name "*.sh" | while read file; do
+          echo "Checking $file..."
+          bash -n "$file" || exit 1
+        done
+        
+        echo "✅ All shell scripts have valid syntax"
+        
+    - name: Test Kind cluster creation
+      run: |
+        echo "🧪 Testing Kind cluster creation..."
+        
+        # Test cluster creation without full bootstrap
+        chmod +x scripts/clusters/create-kind-cluster.sh
+        ./scripts/clusters/create-kind-cluster.sh
+        
+        # Verify cluster is working
+        kubectl cluster-info
+        kubectl get nodes
+        
+        echo "✅ Kind cluster creation works"
+        
+    - name: Validate Kubernetes manifests
+      run: |
+        echo "🔍 Validating Kubernetes manifests..."
+        
+        # Create a test cluster for validation
+        kind create cluster --name validation-test
+        
+        # Install CRDs first
+        echo "Installing Envoy Gateway CRDs..."
+        helm upgrade --install envoy-gateway oci://docker.io/envoyproxy/gateway-helm \
+          --version 1.4.1 \
+          --namespace envoy-gateway-system \
+          --create-namespace
+          
+        echo "Installing Envoy AI Gateway CRDs..."
+        helm upgrade -i aieg-crd oci://docker.io/envoyproxy/ai-gateway-crds-helm \
+          --version v0.2.1 \
+          --namespace envoy-ai-gateway-system \
+          --create-namespace
+          
+        # Wait for CRDs to be ready
+        kubectl wait --timeout=60s --for=condition=Available -n envoy-gateway-system deployment/envoy-gateway
+        
+        # Dry-run validation of configurations
+        echo "Validating configurations with dry-run..."
+        
+        # Test envoy-gateway configs
+        kubectl apply --dry-run=client -f configs/envoy-gateway/gatewayclass.yaml
+        kubectl apply --dry-run=client -f configs/envoy-gateway/ai-gateway.yaml
+        kubectl apply --dry-run=client -f configs/envoy-gateway/jwt-security-policy.yaml
+        kubectl apply --dry-run=client -f configs/envoy-gateway/backends.yaml
+        kubectl apply --dry-run=client -f configs/envoy-gateway/ai-service-backends.yaml
+        kubectl apply --dry-run=client -f configs/envoy-gateway/rate-limiting.yaml
+        
+        echo "✅ All Kubernetes manifests are valid"
+        
+    - name: Cleanup
+      if: always()
+      run: |
+        echo "🧹 Cleaning up..."
+        kind delete clusters --all || echo "No clusters to delete"
+
+  quick-smoke-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: validate-configs
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup prerequisites
+      run: |
+        # Install kubectl
+        curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+        chmod +x kubectl
+        sudo mv kubectl /usr/local/bin/
+        
+        # Install kind
+        curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
+        chmod +x ./kind
+        sudo mv ./kind /usr/local/bin/
+        
+        # Install helm
+        curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+        
+        # Install jq
+        sudo apt-get update
+        sudo apt-get install -y jq
+        
+    - name: Run smoke test
+      run: |
+        echo "🔥 Running smoke test..."
+        
+        # Run bootstrap with minimal configuration
+        chmod +x scripts/bootstrap.sh
+        timeout 1200 ./scripts/bootstrap.sh || exit 1
+        
+        # Basic health check
+        kubectl get pods --all-namespaces
+        
+        # Check if demo script can start
+        chmod +x scripts/demo.sh scripts/get-jwt-tokens.sh
+        timeout 60 ./scripts/get-jwt-tokens.sh || exit 1
+        
+        echo "✅ Smoke test passed"
+        
+    - name: Cleanup
+      if: always()
+      run: |
+        echo "🧹 Cleaning up..."
+        chmod +x scripts/cleanup.sh
+        ./scripts/cleanup.sh || echo "Cleanup completed with warnings"
+        kind delete clusters --all || echo "No clusters to delete"
+
+  documentation-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Check documentation
+      run: |
+        echo "📚 Checking documentation..."
+        
+        # Check if README exists and has content
+        [ -f "README.md" ] && [ -s "README.md" ] || (echo "❌ README.md missing or empty" && exit 1)
+        
+        # Check if demo documentation exists
+        [ -f "demo.md" ] && [ -s "demo.md" ] || (echo "❌ demo.md missing or empty" && exit 1)
+        
+        # Check if CLAUDE.md exists (operational guide)
+        [ -f "experiments/CLAUDE.md" ] && [ -s "experiments/CLAUDE.md" ] || (echo "❌ CLAUDE.md missing or empty" && exit 1)
+        
+        # Check if docs directory has content
+        [ -d "docs" ] && [ "$(ls -A docs)" ] || (echo "❌ docs directory missing or empty" && exit 1)
+        
+        # Check for broken links in markdown files
+        echo "🔍 Checking for broken internal links..."
+        find . -name "*.md" -exec grep -l "\](.*\.md)" {} \; | while read file; do
+          echo "Checking links in $file..."
+          grep -o "\](.*\.md)" "$file" | sed 's/](//' | while read link; do
+            if [ ! -f "$link" ]; then
+              echo "❌ Broken link found in $file: $link"
+              exit 1
+            fi
+          done
+        done
+        
+        echo "✅ Documentation checks passed"
+        
+    - name: Check code examples
+      run: |
+        echo "🧪 Checking code examples in documentation..."
+        
+        # Extract and validate shell commands from README
+        # This is a basic check - in practice you'd want more sophisticated validation
+        
+        # Check if bootstrap script is mentioned and exists
+        grep -q "bootstrap.sh" README.md || (echo "❌ bootstrap.sh not mentioned in README" && exit 1)
+        [ -x "scripts/bootstrap.sh" ] || (echo "❌ bootstrap.sh not executable" && exit 1)
+        
+        # Check if demo script is mentioned and exists
+        grep -q "demo.sh" README.md || (echo "❌ demo.sh not mentioned in README" && exit 1)
+        [ -x "scripts/demo.sh" ] || (echo "❌ demo.sh not executable" && exit 1)
+        
+        echo "✅ Code examples validation passed"
