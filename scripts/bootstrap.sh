@@ -383,7 +383,7 @@ deploy_sample_models() {
     # Wait for models to be ready
     log "Waiting for models to be ready..."
     kubectl wait --for=condition=ready --timeout=600s inferenceservice/sklearn-iris -n tenant-a 2>/dev/null || warn "sklearn-iris model may still be starting up"
-    kubectl wait --for=condition=ready --timeout=600s inferenceservice/tensorflow-mnist -n tenant-b 2>/dev/null || warn "tensorflow-mnist model may still be starting up"
+    #kubectl wait --for=condition=ready --timeout=600s inferenceservice/tensorflow-mnist -n tenant-b 2>/dev/null || warn "tensorflow-mnist model may still be starting up"
     kubectl wait --for=condition=ready --timeout=600s inferenceservice/pytorch-resnet -n tenant-c 2>/dev/null || warn "pytorch-resnet model may still be starting up"
     
     success "Sample models deployed"

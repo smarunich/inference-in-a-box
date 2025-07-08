@@ -5,7 +5,7 @@ metadata:
   namespace: tenant-c
 spec:
   predictor:
-    minReplicas: 0
+    minReplicas: 1
     maxReplicas: 3
     scaleTarget: 60
     scaleMetric: concurrency

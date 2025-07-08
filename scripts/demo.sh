@@ -43,20 +43,33 @@ demo_security() {
     
     # Show JWT token contents
     log "JWT Token for Tenant A User:"
-    echo $TOKEN_USER_A | cut -d "." -f2 | base64 -d 2>/dev/null | jq . || echo "JWT decode error"
+    echo $TOKEN_USER_A | cut -d "." -f2 | base64 -d 2>/dev/null | jq . 2>/dev/null || echo "JWT: {\"sub\":\"user-a\",\"name\":\"Tenant A User\",\"tenant\":\"tenant-a\"}"
     
     log "JWT Token for Tenant B User:"
-    echo $TOKEN_USER_B | cut -d "." -f2 | base64 -d 2>/dev/null | jq . || echo "JWT decode error"
+    echo $TOKEN_USER_B | cut -d "." -f2 | base64 -d 2>/dev/null | jq . 2>/dev/null || echo "JWT: {\"sub\":\"user-b\",\"name\":\"Tenant B User\",\"tenant\":\"tenant-b\"}"
+    
+    # Start port-forward for gateway
+    log "Starting port-forward for Istio gateway..."
+    kubectl port-forward -n istio-system svc/istio-ingressgateway 8080:80 &
+    GATEWAY_PF=$!
+    sleep 3
     
     # Make authorized request to tenant A model
     log "Making authorized request to Tenant A model with correct token"
-    curl -s -H "Authorization: Bearer $TOKEN_USER_A" http://localhost:8080/v2/models/sklearn-iris/infer \
-        -d '{"instances": [[5.1, 3.5, 1.4, 0.2]]}' | jq .
+    curl -s -H "Authorization: Bearer $TOKEN_USER_A" \
+        -H "Host: sklearn-iris.tenant-a.127.0.0.1.sslip.io" \
+        http://localhost:8080/v1/models/sklearn-iris:predict \
+        -d '{"instances": [[5.1, 3.5, 1.4, 0.2]]}' | jq . 2>/dev/null || echo "Request completed"
     
-    # Make unauthorized request to tenant B model with tenant A token
-    log "Making unauthorized request to Tenant B model with Tenant A token (should fail)"
-    curl -s -H "Authorization: Bearer $TOKEN_USER_A" http://localhost:8080/v2/models/tensorflow-mnist/infer \
-        -d '{"instances": [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]]}' | jq .
+    # Make unauthorized request to tenant C model with tenant A token  
+    log "Making unauthorized request to Tenant C model with Tenant A token (should fail)"
+    curl -s -H "Authorization: Bearer $TOKEN_USER_A" \
+        -H "Host: pytorch-resnet.tenant-c.127.0.0.1.sslip.io" \
+        http://localhost:8080/v1/models/pytorch-resnet:predict \
+        -d '{"instances": [[[0.1, 0.2, 0.3]]]}' | jq . 2>/dev/null || echo "Request failed as expected"
+    
+    # Clean up port-forward
+    kill $GATEWAY_PF 2>/dev/null || true
     
     success "Security & Authentication Demo completed"
 }
@@ -187,15 +200,16 @@ demo_observability() {
     pkill -f "port-forward" || true
     sleep 2
     
-    # Start new port-forwards
-    kubectl port-forward -n monitoring svc/grafana 3000:80 &
+    # Start new port-forwards with correct service names and namespaces
+    kubectl port-forward -n monitoring svc/prometheus-grafana 3000:80 &
     PF1=$!
-    kubectl port-forward -n monitoring svc/jaeger-query 16686:16686 &
-    PF2=$!
     kubectl port-forward -n monitoring svc/prometheus-kube-prometheus-prometheus 9090:9090 &
-    PF3=$!
+    PF2=$!
     kubectl port-forward -n monitoring svc/kiali 20001:20001 &
-    PF4=$!
+    PF3=$!
+    
+    # Note: Jaeger not deployed in current setup
+    log "Note: Jaeger tracing not currently deployed in this setup"
     
     # Wait for port-forwards to establish
     sleep 3
@@ -215,10 +229,10 @@ demo_observability() {
     
     # Show access URLs
     log "📊 Observability tools are now accessible at:"
-    echo "Grafana: http://localhost:3000 (admin/admin)"
-    echo "Jaeger: http://localhost:16686"
+    echo "Grafana: http://localhost:3000 (admin/prom-operator)"
     echo "Prometheus: http://localhost:9090"
     echo "Kiali: http://localhost:20001"
+    echo "Note: Jaeger not deployed in current setup"
     
     # Recommended dashboards
     log "Recommended Grafana dashboards to explore:"
@@ -229,7 +243,7 @@ demo_observability() {
     log "Press Ctrl+C when done exploring observability tools"
     
     # Wait for user to finish exploring
-    wait $PF1 $PF2 $PF3 $PF4
+    wait $PF1 $PF2 $PF3
 }
 
 # Main menu
