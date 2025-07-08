@@ -376,6 +376,46 @@ install_envoy_ai_gateway() {
     success "Envoy Gateway and AI Gateway installation completed"
 }
 
+# Deploy authentication and supporting services
+deploy_auth_services() {
+    log "Deploying authentication and supporting services..."
+    
+    kubectl config use-context kind-${CLUSTER_NAME}
+    
+    # Deploy TLS certificates
+    log "Creating TLS certificates..."
+    kubectl apply -f ${PROJECT_DIR}/configs/certs/tls-certificates.yaml
+    
+    # Wait for certificates to be ready
+    log "Waiting for certificates to be issued..."
+    kubectl wait --timeout=120s -n envoy-gateway-system certificate/ai-gateway-tls --for=condition=Ready || warn "AI Gateway TLS certificate may still be provisioning"
+    kubectl wait --timeout=120s -n istio-system certificate/inference-gateway-tls --for=condition=Ready || warn "Inference Gateway TLS certificate may still be provisioning"
+    
+    # Deploy JWT server
+    log "Deploying JWT server..."
+    kubectl apply -f ${PROJECT_DIR}/configs/auth/jwt-server.yaml
+    
+    # Wait for JWT server to be ready
+    log "Waiting for JWT server to be ready..."
+    kubectl wait --timeout=120s -n default deployment/jwt-server --for=condition=Available
+    
+    # Deploy default backend
+    log "Deploying default backend service..."
+    kubectl apply -f ${PROJECT_DIR}/configs/istio/default-backend.yaml
+    
+    # Wait for default backend to be ready
+    log "Waiting for default backend to be ready..."
+    kubectl wait --timeout=120s -n default deployment/default-backend --for=condition=Available
+    
+    # Verify JWT server is responding
+    log "Verifying JWT server connectivity..."
+    kubectl run jwt-test --image=curlimages/curl --rm -i --restart=Never -- \
+        curl -f http://jwt-server.default.svc.cluster.local:8080/.well-known/jwks.json || \
+        warn "JWT server may not be fully ready"
+    
+    success "Authentication and supporting services deployed"
+}
+
 # Setup multi-tenant namespaces
 setup_multitenancy() {
     log "Setting up multi-tenant namespaces..."
@@ -447,6 +487,76 @@ configure_access_management() {
     success "Access management configuration completed"
 }
 
+# Validate deployment readiness
+validate_deployment() {
+    log "Validating deployment readiness..."
+    
+    kubectl config use-context kind-${CLUSTER_NAME}
+    
+    # Check core services
+    log "Checking core services..."
+    
+    # Check JWT server
+    if kubectl get deployment jwt-server -n default &>/dev/null; then
+        if kubectl wait --timeout=30s -n default deployment/jwt-server --for=condition=Available &>/dev/null; then
+            success "✓ JWT Server is ready"
+        else
+            warn "⚠ JWT Server may not be fully ready"
+        fi
+    else
+        error "✗ JWT Server is not deployed"
+    fi
+    
+    # Check AI Gateway
+    if kubectl get gateway ai-inference-gateway -n envoy-gateway-system &>/dev/null; then
+        success "✓ AI Gateway is configured"
+    else
+        warn "⚠ AI Gateway configuration not found"
+    fi
+    
+    # Check models
+    log "Checking model readiness..."
+    for model in "sklearn-iris" "pytorch-resnet"; do
+        ns=""
+        case $model in
+            "sklearn-iris") ns="tenant-a" ;;
+            "pytorch-resnet") ns="tenant-c" ;;
+        esac
+        
+        if kubectl get inferenceservice $model -n $ns &>/dev/null; then
+            status=$(kubectl get inferenceservice $model -n $ns -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null)
+            if [[ "$status" == "True" ]]; then
+                success "✓ Model $model is ready"
+            else
+                warn "⚠ Model $model may still be starting"
+            fi
+        else
+            error "✗ Model $model is not deployed"
+        fi
+    done
+    
+    # Check observability
+    log "Checking observability services..."
+    for service in "prometheus-grafana" "prometheus-kube-prometheus-prometheus" "kiali"; do
+        if kubectl get service $service -n monitoring &>/dev/null; then
+            success "✓ $service is available"
+        else
+            warn "⚠ $service is not available"
+        fi
+    done
+    
+    # Test JWT server endpoint
+    log "Testing JWT server connectivity..."
+    if kubectl run jwt-connectivity-test --image=curlimages/curl --rm -i --restart=Never --timeout=30s -- \
+        curl -f -s http://jwt-server.default.svc.cluster.local:8080/.well-known/jwks.json >/dev/null 2>&1; then
+        success "✓ JWT server is responding"
+    else
+        warn "⚠ JWT server connectivity test failed"
+    fi
+    
+    success "Deployment validation completed"
+}
+
 # Main execution
 main() {
     log "Starting Inference-in-a-Box setup..."
@@ -492,6 +602,9 @@ main() {
         # Install Envoy Gateway and AI Gateway
         install_envoy_ai_gateway
         
+        # Deploy authentication services
+        deploy_auth_services
+        
         # Setup multi-tenant namespaces
         setup_multitenancy
         
@@ -500,6 +613,9 @@ main() {
         
         # Configure access management
         configure_access_management
+        
+        # Validate all services are ready
+        validate_deployment
     else
         log "CI mode: Skipping observability, AI Gateway, and model deployment"
         # Only setup tenant namespaces in CI mode for minimal testing
@@ -507,14 +623,17 @@ main() {
     fi
     
     log "Setup completed! Services available at:"
-    log "📊 Grafana: http://localhost:3000 (admin/admin)"
-    log "🔍 Jaeger: http://localhost:16686"
+    log "📊 Grafana: http://localhost:3000 (admin/prom-operator)"
     log "📈 Prometheus: http://localhost:9090"
-    log "🗺️  Kiali: http://localhost:20001"
+    log "🗺️ Kiali: http://localhost:20001"
+    log "🤖 AI Gateway: http://localhost:8080"
+    log ""
+    log "🔑 JWT Tokens available at: kubectl port-forward -n default svc/jwt-server 8081:8080"
+    log "   Then visit: http://localhost:8081/tokens"
     log ""  
     log "To access services, run:"
     log "kubectl port-forward -n monitoring svc/prometheus-grafana 3000:80 &"
-    log "kubectl port-forward -n monitoring svc/jaeger-query 16686:16686 &"
+    log "kubectl port-forward -n envoy-gateway-system svc/envoy-ai-gateway 8080:80 &"
     log "kubectl port-forward -n monitoring svc/prometheus-kube-prometheus-prometheus 9090:9090 &"
     log "kubectl port-forward -n monitoring svc/kiali 20001:20001 &"
     log ""

@@ -1,0 +1,61 @@
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-issuer
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: ai-gateway-tls
+  namespace: envoy-gateway-system
+spec:
+  secretName: ai-gateway-tls
+  issuerRef:
+    name: selfsigned-issuer
+    kind: ClusterIssuer
+  commonName: ai-gateway.inference-in-a-box.local
+  dnsNames:
+  - ai-gateway.inference-in-a-box.local
+  - ai-gateway
+  - localhost
+  duration: 8760h  # 1 year
+  renewBefore: 720h # 30 days
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: inference-gateway-tls
+  namespace: istio-system
+spec:
+  secretName: inference-gateway-tls
+  issuerRef:
+    name: selfsigned-issuer
+    kind: ClusterIssuer
+  commonName: inference-gateway.inference-in-a-box.local
+  dnsNames:
+  - inference-gateway.inference-in-a-box.local
+  - inference-gateway
+  - "*.127.0.0.1.sslip.io"
+  - localhost
+  duration: 8760h  # 1 year
+  renewBefore: 720h # 30 days
+---
+# CA Certificate ConfigMap for backend TLS validation
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ai-gateway-ca
+  namespace: envoy-gateway-system
+data:
+  ca.crt: |
+    -----BEGIN CERTIFICATE-----
+    MIICpjCCAY4CCQCrU+z2/mGYgDANBgkqhkiG9w0BAQsFADATMREwDwYDVQQDDAhh
+    aS1nYXRld2F5MB4XDTIzMDYxNDEwMDAwMFoXDTI0MDYxNDEwMDAwMFowEzERMA8G
+    A1UEAwwIYWktZ2F0ZXdheTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEB
+    AL2Z8k/mGYgDANBgkqhkiG9w0BAQsFADATMREwDwYDVQQDDAhhaS1nYXRld2F5
+    MB4XDTIzMDYxNDEwMDAwMFoXDTI0MDYxNDEwMDAwMFowEzERMA8GA1UEAwwIYWkt
+    Z2F0ZXdheTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAL2Z8k/mGYgD
+    ANBgkqhkiG9w0BAQsFADATMREwDwYDVQQDDAhhaS1nYXRld2F5
+    -----END CERTIFICATE-----

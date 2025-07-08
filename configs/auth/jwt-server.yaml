@@ -1,0 +1,111 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jwt-server
+  namespace: default
+  labels:
+    app: jwt-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jwt-server
+  template:
+    metadata:
+      labels:
+        app: jwt-server
+    spec:
+      containers:
+      - name: jwt-server
+        image: node:18-alpine
+        ports:
+        - containerPort: 8080
+        command: ["/bin/sh"]
+        args:
+        - -c
+        - |
+          cat > /app/server.js << 'EOF'
+          const http = require('http');
+          const crypto = require('crypto');
+          
+          // Generate a simple JWKS for demo purposes
+          const jwks = {
+            "keys": [
+              {
+                "kty": "oct",
+                "kid": "demo-key",
+                "k": "c2VjcmV0",
+                "alg": "HS256",
+                "use": "sig"
+              }
+            ]
+          };
+          
+          // Simple JWT tokens for demo (pre-generated with secret "secret")
+          const tokens = {
+            "tenant-a": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyLWEiLCJuYW1lIjoiVGVuYW50IEEgVXNlciIsInRlbmFudCI6InRlbmFudC1hIiwiaXNzIjoiaW5mZXJlbmNlLWluLWEtYm94IiwiYXVkIjoidGVuYW50LWEiLCJleHAiOjk5OTk5OTk5OTl9.8Xtgw_eSO-fTZexLFVXME5AQ_jJOf615P7VQGahNdDk",
+            "tenant-b": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyLWIiLCJuYW1lIjoiVGVuYW50IEIgVXNlciIsInRlbmFudCI6InRlbmFudC1iIiwiaXNzIjoiaW5mZXJlbmNlLWluLWEtYm94IiwiYXVkIjoidGVuYW50LWIiLCJleHAiOjk5OTk5OTk5OTl9.xYKzRQIxgFcQguz4sBDt1M6ZaRPFBEPjjOvpwfEKjaE",
+            "tenant-c": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyLWMiLCJuYW1lIjoiVGVuYW50IEMgVXNlciIsInRlbmFudCI6InRlbmFudC1jIiwiaXNzIjoiaW5mZXJlbmNlLWluLWEtYm94IiwiYXVkIjoidGVuYW50LWMiLCJleHAiOjk5OTk5OTk5OTl9.YGKj3n_OnUsLaJUBo-xF-_kGOOjwlwn4GWmgdP8kxQ4"
+          };
+          
+          const server = http.createServer((req, res) => {
+            res.setHeader('Content-Type', 'application/json');
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            
+            console.log(\`\${new Date().toISOString()} - \${req.method} \${req.url}\`);
+            
+            if (req.url === '/.well-known/jwks.json') {
+              res.writeHead(200);
+              res.end(JSON.stringify(jwks, null, 2));
+            } else if (req.url === '/tokens') {
+              res.writeHead(200);
+              res.end(JSON.stringify(tokens, null, 2));
+            } else if (req.url === '/health') {
+              res.writeHead(200);
+              res.end(JSON.stringify({status: 'healthy'}));
+            } else {
+              res.writeHead(404);
+              res.end(JSON.stringify({error: 'Not found'}));
+            }
+          });
+          
+          server.listen(8080, '0.0.0.0', () => {
+            console.log('JWT Server started on port 8080');
+            console.log('Available endpoints:');
+            console.log('  /.well-known/jwks.json - JWKS endpoint');
+            console.log('  /tokens - Demo JWT tokens');
+            console.log('  /health - Health check');
+          });
+          EOF
+          
+          cd /app && node server.js
+        workingDir: /app
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /.well-known/jwks.json
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jwt-server
+  namespace: default
+  labels:
+    app: jwt-server
+spec:
+  selector:
+    app: jwt-server
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  type: ClusterIP
