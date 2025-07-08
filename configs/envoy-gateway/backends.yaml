@@ -1,0 +1,32 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: sklearn-iris-backend
+  namespace: envoy-gateway-system
+spec:
+  endpoints:
+  - fqdn:
+      hostname: sklearn-iris-predictor-default.tenant-a.svc.cluster.local
+      port: 80
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: pytorch-resnet-backend
+  namespace: envoy-gateway-system
+spec:
+  endpoints:
+  - fqdn:
+      hostname: pytorch-resnet-predictor-default.tenant-c.svc.cluster.local
+      port: 80
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: istio-gateway-backend
+  namespace: envoy-gateway-system
+spec:
+  endpoints:
+  - fqdn:
+      hostname: istio-ingressgateway.istio-system.svc.cluster.local
+      port: 80

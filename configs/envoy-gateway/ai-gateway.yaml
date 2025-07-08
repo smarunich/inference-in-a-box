@@ -24,8 +24,8 @@ spec:
       - kind: Secret
         name: ai-gateway-tls
 ---
-apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: AIGateway
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
 metadata:
   name: ai-inference-gateway
   namespace: envoy-gateway-system
@@ -34,67 +34,33 @@ spec:
   - group: gateway.networking.k8s.io
     kind: Gateway
     name: ai-inference-gateway
-    namespace: envoy-gateway-system
-  jwt:
-    providers:
-    - name: tenant-a-provider
-      issuer: "inference-in-a-box"
-      audiences:
-      - "tenant-a"
-      remoteJWKS:
-        uri: "http://jwt-server.default.svc.cluster.local:8080/.well-known/jwks.json"
-        timeout: 5s
-        cacheDuration: 300s
-    - name: tenant-b-provider
-      issuer: "inference-in-a-box"
-      audiences:
-      - "tenant-b"
-      remoteJWKS:
-        uri: "http://jwt-server.default.svc.cluster.local:8080/.well-known/jwks.json"
-        timeout: 5s
-        cacheDuration: 300s
-    - name: tenant-c-provider
-      issuer: "inference-in-a-box"
-      audiences:
-      - "tenant-c"
-      remoteJWKS:
-        uri: "http://jwt-server.default.svc.cluster.local:8080/.well-known/jwks.json"
-        timeout: 5s
-        cacheDuration: 300s
-  routes:
-  - name: sklearn-iris-route
-    match:
-      headers:
-      - name: "x-tenant"
+  schema:
+    name: OpenAI
+  rules:
+  - matches:
+    - headers:
+      - type: Exact
+        name: "x-tenant"
         value: "tenant-a"
-      path:
-        type: PathPrefix
-        value: "/v1/models/sklearn-iris"
-    backends:
+      - type: Exact
+        name: "x-ai-eg-model"
+        value: "sklearn-iris"
+    backendRefs:
     - name: sklearn-iris-backend
-      fqdn: "sklearn-iris-predictor-default.tenant-a.svc.cluster.local"
-      port: 80
-      protocol: HTTP
-  - name: pytorch-resnet-route
-    match:
-      headers:
-      - name: "x-tenant"
+      weight: 1
+  - matches:
+    - headers:
+      - type: Exact
+        name: "x-tenant"
         value: "tenant-c"
-      path:
-        type: PathPrefix
-        value: "/v1/models/pytorch-resnet"
-    backends:
+      - type: Exact
+        name: "x-ai-eg-model"
+        value: "pytorch-resnet"
+    backendRefs:
     - name: pytorch-resnet-backend
-      fqdn: "pytorch-resnet-predictor-default.tenant-c.svc.cluster.local"
-      port: 80
-      protocol: HTTP
-  - name: default-istio-route
-    match:
-      path:
-        type: PathPrefix
-        value: "/"
-    backends:
+      weight: 1
+  - matches:
+    - {}
+    backendRefs:
     - name: istio-gateway-backend
-      fqdn: "istio-ingressgateway.istio-system.svc.cluster.local"
-      port: 80
-      protocol: HTTP
+      weight: 1

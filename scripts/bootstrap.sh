@@ -345,17 +345,22 @@ install_envoy_ai_gateway() {
     # Apply GatewayClass
     kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/gatewayclass.yaml
     
+    # Apply JWT Security Policy
+    kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/jwt-security-policy.yaml
+    
+    # Apply Backend resources first
+    kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/backends.yaml
+    
+    # Apply AI service backends
+    kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/ai-service-backends.yaml
+    
     # Apply AI Gateway configuration
     kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/ai-gateway.yaml
     
-    # Apply HTTPRoute for routing
-    kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/httproute.yaml
-    
-    # Apply AI service backends
-    kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/ai-backends.yaml
-    
-    # Apply security policies
-    kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/security-policies.yaml
+    # Apply HTTPRoute for routing (if exists)
+    if [ -f "${PROJECT_DIR}/configs/envoy-gateway/httproute.yaml" ]; then
+        kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/httproute.yaml
+    fi
     
     # Apply rate limiting policies
     kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/rate-limiting.yaml

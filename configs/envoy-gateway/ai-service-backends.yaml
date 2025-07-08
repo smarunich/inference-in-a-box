@@ -1,0 +1,38 @@
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: sklearn-iris-backend
+  namespace: envoy-gateway-system
+spec:
+  backendRef:
+    group: gateway.envoyproxy.io
+    kind: Backend
+    name: sklearn-iris-backend
+  schema:
+    name: OpenAI
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: pytorch-resnet-backend
+  namespace: envoy-gateway-system
+spec:
+  backendRef:
+    group: gateway.envoyproxy.io
+    kind: Backend
+    name: pytorch-resnet-backend
+  schema:
+    name: OpenAI
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: istio-gateway-backend
+  namespace: envoy-gateway-system
+spec:
+  backendRef:
+    group: gateway.envoyproxy.io
+    kind: Backend
+    name: istio-gateway-backend
+  schema:
+    name: OpenAI
