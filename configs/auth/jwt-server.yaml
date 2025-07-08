@@ -52,7 +52,7 @@ spec:
             res.setHeader('Content-Type', 'application/json');
             res.setHeader('Access-Control-Allow-Origin', '*');
             
-            console.log(\`\${new Date().toISOString()} - \${req.method} \${req.url}\`);
+            console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
             
             if (req.url === '/.well-known/jwks.json') {
               res.writeHead(200);
