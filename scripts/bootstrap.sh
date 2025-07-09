@@ -366,8 +366,8 @@ install_envoy_ai_gateway() {
     # Apply Traffic policies
     kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/policies/rate-limiting.yaml
     
-    # Apply Observability configurations
-    kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/observability/telemetry-config.yaml
+    # Apply Observability configurations (optional)
+    # kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/observability/telemetry-config.yaml
     
     # Wait for gateway to be ready
     log "Waiting for AI Gateway to be ready..."

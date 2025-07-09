@@ -464,32 +464,26 @@ graph LR
 
 ### Observability Configuration (`observability/`)
 
-#### `telemetry-config.yaml`
-- **Purpose**: Performance tracking and monitoring (KServe best practice)
+#### `telemetry-config.yaml` (Optional)
+- **Purpose**: Basic telemetry and access logging for AI Gateway
 - **Resources**: 
-  - `ai-gateway-telemetry`: EnvoyProxy with telemetry configuration
-  - `ai-gateway-observability`: BackendTrafficPolicy with custom metrics
+  - `ai-gateway-telemetry`: EnvoyProxy with simplified telemetry configuration
   - `ai-gateway-dashboard`: Grafana dashboard configuration
 - **Key Features**:
   - **Metrics Collection**:
-    - Model request rates and response times
-    - Token usage tracking (input/output)
-    - Per-tenant and per-model metrics
-    - Error rates and success rates
-  - **Distributed Tracing**:
-    - OpenTelemetry integration
-    - Jaeger backend support
-    - Request correlation across services
+    - Prometheus metrics export
+    - Basic request/response metrics
   - **Access Logging**:
     - Structured logging with tenant/model context
-    - Token consumption logging
+    - Token consumption logging from AI Gateway metadata
     - JWT subject tracking
-    - OpenTelemetry log export
+    - File-based log output
   - **Custom Dashboards**:
     - Grafana dashboard for AI Gateway performance
     - Token usage visualization
     - Error rate monitoring by tenant
     - Request latency percentiles
+- **Note**: Advanced features like OpenTelemetry integration and custom metrics may require additional configuration or newer Envoy Gateway versions
 
 ## Deployment Order
 
@@ -524,9 +518,9 @@ Deploy configurations in the following order to ensure proper dependencies:
    kubectl apply -f policies/rate-limiting.yaml
    ```
 
-6. **Observability** (KServe monitoring):
+6. **Observability** (Optional):
    ```bash
-   kubectl apply -f observability/telemetry-config.yaml
+   # kubectl apply -f observability/telemetry-config.yaml
    ```
 
 ## Configuration Validation

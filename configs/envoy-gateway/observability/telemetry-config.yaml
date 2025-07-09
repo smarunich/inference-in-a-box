@@ -8,17 +8,6 @@ spec:
     metrics:
       prometheus:
         disable: false
-      sinks:
-      - type: OpenTelemetry
-        openTelemetry:
-          service: otel-collector.monitoring.svc.cluster.local
-          port: 4317
-    tracing:
-      provider:
-        type: OpenTelemetry
-        openTelemetry:
-          service: jaeger-collector.monitoring.svc.cluster.local
-          port: 14250
     accessLog:
       settings:
       - format:
@@ -36,58 +25,6 @@ spec:
         - type: File
           file:
             path: /tmp/access.log
-        - type: OpenTelemetry
-          openTelemetry:
-            service: otel-collector.monitoring.svc.cluster.local
-            port: 4317
-            resources:
-              service.name: ai-gateway
-              service.version: v1.0.0
----
-apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: BackendTrafficPolicy
-metadata:
-  name: ai-gateway-observability
-  namespace: envoy-gateway-system
-spec:
-  targetRefs:
-  - group: gateway.networking.k8s.io
-    kind: Gateway
-    name: ai-inference-gateway
-  proxyMetadata:
-    custom_metrics:
-      - name: ai_model_requests_total
-        type: counter
-        tags:
-          tenant: "%REQ(X-TENANT)%"
-          model: "%REQ(X-MODEL)%"
-          response_code: "%RESPONSE_CODE%"
-      - name: ai_model_request_duration_seconds
-        type: histogram
-        tags:
-          tenant: "%REQ(X-TENANT)%"
-          model: "%REQ(X-MODEL)%"
-        value: "%DURATION%"
-      - name: ai_model_tokens_processed
-        type: counter
-        tags:
-          tenant: "%REQ(X-TENANT)%"
-          model: "%REQ(X-MODEL)%"
-          direction: "in"
-        value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_input_token)%"
-      - name: ai_model_tokens_generated
-        type: counter
-        tags:
-          tenant: "%REQ(X-TENANT)%"
-          model: "%REQ(X-MODEL)%"
-          direction: "out"
-        value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_output_token)%"
-      - name: ai_model_tokens_total
-        type: counter
-        tags:
-          tenant: "%REQ(X-TENANT)%"
-          model: "%REQ(X-MODEL)%"
-        value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_total_token)%"
 ---
 apiVersion: v1
 kind: ConfigMap
