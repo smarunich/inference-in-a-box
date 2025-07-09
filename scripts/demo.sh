@@ -36,15 +36,60 @@ get_ai_gateway_service() {
     kubectl get svc -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=ai-inference-gateway -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "envoy-ai-gateway"
 }
 
+# Helper function to get JWT tokens from server
+get_jwt_tokens() {
+    # Check if JWT server is available
+    if ! kubectl get svc jwt-server -n default &>/dev/null; then
+        error "JWT server not found. Please ensure the platform is properly bootstrapped."
+        return 1
+    fi
+    
+    # Port-forward to JWT server in background
+    kubectl port-forward -n default svc/jwt-server 8081:8080 >/dev/null 2>&1 &
+    local jwt_pf=$!
+    sleep 2
+    
+    # Get tokens from server
+    local tokens=$(curl -s http://localhost:8081/tokens 2>/dev/null)
+    
+    # Clean up port-forward
+    kill $jwt_pf 2>/dev/null || true
+    
+    if [ -z "$tokens" ]; then
+        error "Failed to retrieve JWT tokens from server"
+        return 1
+    fi
+    
+    echo "$tokens"
+}
+
 # Demo Functions
 
 # Demo 1: Security & Authentication
 demo_security() {
     log "Running Security & Authentication Demo"
     
-    # Set up JWT tokens for demo
-    TOKEN_USER_A="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyLWEiLCJuYW1lIjoiVGVuYW50IEEgVXNlciIsInRlbmFudCI6InRlbmFudC1hIn0.8Xtgw_eSO-fTZexLFVXME5AQ_jJOf615P7VQGahNdDk"
-    TOKEN_USER_B="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyLWIiLCJuYW1lIjoiVGVuYW50IEIgVXNlciIsInRlbmFudCI6InRlbmFudC1iIn0.xYKzRQIxgFcQguz4sBDt1M6ZaRPFBEPjjOvpwfEKjaE"
+    # Get JWT tokens from server dynamically
+    log "Retrieving JWT tokens from server..."
+    local jwt_response=$(get_jwt_tokens)
+    if [ $? -ne 0 ]; then
+        error "Failed to retrieve JWT tokens"
+        return 1
+    fi
+    
+    # Extract tokens using jq
+    TOKEN_USER_A=$(echo "$jwt_response" | jq -r '.["tenant-a"]' 2>/dev/null)
+    TOKEN_USER_B=$(echo "$jwt_response" | jq -r '.["tenant-b"]' 2>/dev/null)
+    
+    if [ -z "$TOKEN_USER_A" ] || [ "$TOKEN_USER_A" = "null" ]; then
+        error "Failed to extract tenant-a token"
+        return 1
+    fi
+    
+    if [ -z "$TOKEN_USER_B" ] || [ "$TOKEN_USER_B" = "null" ]; then
+        error "Failed to extract tenant-b token"
+        return 1
+    fi
     
     # Show JWT token contents
     log "JWT Token for Tenant A User:"
@@ -96,8 +141,23 @@ demo_autoscaling() {
     # Generate load in background
     log "Generating load to trigger auto-scaling for 60 seconds..."
     
+    # Get JWT token from server dynamically
+    log "Retrieving JWT token from server..."
+    local jwt_response=$(get_jwt_tokens)
+    if [ $? -ne 0 ]; then
+        error "Failed to retrieve JWT tokens"
+        return 1
+    fi
+    
+    # Extract tenant-a token using jq
+    TOKEN=$(echo "$jwt_response" | jq -r '.["tenant-a"]' 2>/dev/null)
+    
+    if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+        error "Failed to extract tenant-a token"
+        return 1
+    fi
+    
     # Run load in background for 60 seconds
-    TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyLWEiLCJuYW1lIjoiVGVuYW50IEEgVXNlciIsInRlbmFudCI6InRlbmFudC1hIn0.8Xtgw_eSO-fTZexLFVXME5AQ_jJOf615P7VQGahNdDk"
     
     # Use background process for load generation
     for i in {1..600}; do
@@ -158,7 +218,22 @@ demo_canary() {
     
     # Make requests to demonstrate traffic splitting
     log "Making 10 requests to show traffic splitting between main and canary:"
-    TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyLWEiLCJuYW1lIjoiVGVuYW50IEEgVXNlciIsInRlbmFudCI6InRlbmFudC1hIn0.8Xtgw_eSO-fTZexLFVXME5AQ_jJOf615P7VQGahNdDk"
+    
+    # Get JWT token from server dynamically
+    log "Retrieving JWT token from server..."
+    local jwt_response=$(get_jwt_tokens)
+    if [ $? -ne 0 ]; then
+        error "Failed to retrieve JWT tokens"
+        return 1
+    fi
+    
+    # Extract tenant-a token using jq
+    TOKEN=$(echo "$jwt_response" | jq -r '.["tenant-a"]' 2>/dev/null)
+    
+    if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+        error "Failed to extract tenant-a token"
+        return 1
+    fi
     
     # First ensure the AI gateway is port-forwarded
     AI_GATEWAY_SERVICE=$(get_ai_gateway_service)
@@ -266,8 +341,28 @@ demo_observability() {
     
     # Generate some traffic for metrics/traces
     log "Generating sample traffic for metrics and traces..."
-    TOKEN_A="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyLWEiLCJuYW1lIjoiVGVuYW50IEEgVXNlciIsInRlbmFudCI6InRlbmFudC1hIn0.8Xtgw_eSO-fTZexLFVXME5AQ_jJOf615P7VQGahNdDk"
-    TOKEN_C="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyLWMiLCJuYW1lIjoiVGVuYW50IEMgVXNlciIsInRlbmFudCI6InRlbmFudC1jIn0.example"
+    
+    # Get JWT tokens from server dynamically
+    log "Retrieving JWT tokens from server..."
+    local jwt_response=$(get_jwt_tokens)
+    if [ $? -ne 0 ]; then
+        error "Failed to retrieve JWT tokens"
+        return 1
+    fi
+    
+    # Extract tokens using jq
+    TOKEN_A=$(echo "$jwt_response" | jq -r '.["tenant-a"]' 2>/dev/null)
+    TOKEN_C=$(echo "$jwt_response" | jq -r '.["tenant-c"]' 2>/dev/null)
+    
+    if [ -z "$TOKEN_A" ] || [ "$TOKEN_A" = "null" ]; then
+        error "Failed to extract tenant-a token"
+        return 1
+    fi
+    
+    if [ -z "$TOKEN_C" ] || [ "$TOKEN_C" = "null" ]; then
+        error "Failed to extract tenant-c token"
+        return 1
+    fi
     
     for i in {1..10}; do
         curl -s -H "Authorization: Bearer $TOKEN_A" \
