@@ -615,6 +615,9 @@ main() {
     # Install Envoy Gateway and AI Gateway
     install_envoy_ai_gateway
     
+    # Install observability stack
+    install_observability
+
     # If not in CI mode, install additional components
     if [[ "$CI_MODE" == "false" ]]; then
         
@@ -635,8 +638,6 @@ main() {
         setup_multitenancy
     fi
 
-    # Install observability stack
-    install_observability
 
     
     log "Setup completed! Services available at:"
