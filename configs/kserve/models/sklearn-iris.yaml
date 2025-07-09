@@ -10,4 +10,4 @@ spec:
     scaleTarget: 60
     scaleMetric: concurrency
     sklearn:
-      storageUri: "gs://seldon-models/sklearn/mms/lr_model"
+      storageUri: "gs://kfserving-examples/models/sklearn/1.0/model"

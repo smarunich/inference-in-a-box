@@ -104,8 +104,8 @@ install_istio() {
         export PATH="$PWD/istio-${ISTIO_VERSION}/bin:$PATH"
     fi
     
-    istioctl install --set values.defaultRevision=default -y
-    kubectl label namespace default istio-injection=enabled
+    istioctl install --set values.defaultRevision=default --set meshConfig.accessLogFile=/dev/stdout -y
+    kubectl label namespace default istio-injection=disabled
     
     success "Istio installation completed"
 }

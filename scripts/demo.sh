@@ -107,15 +107,15 @@ demo_security() {
     
     # Make authorized request to tenant A model
     log "Making authorized request to Tenant A model with correct token"
-    curl -s -H "Authorization: Bearer $TOKEN_USER_A" \
-        http://localhost:8080/v1/models/sklearn-iris:predict \
+    curl -X POST -s -H "Authorization: Bearer $TOKEN_USER_A" -H "Content-Type: application/json" \
+        http://sklearn-iris-predictor.tenant-a.127.0.0.1.sslip.io:8080/v1/models/sklearn-iris:predict \
         -d '{"instances": [[5.1, 3.5, 1.4, 0.2]]}' | jq . 2>/dev/null || echo "Request completed"
     
     # Make unauthorized request to tenant C model with tenant A token  
     log "Making unauthorized request to Tenant C model with Tenant A token (should fail)"
-    curl -s -H "Authorization: Bearer $TOKEN_USER_A" \
-        http://localhost:8080/v1/models/pytorch-resnet:predict \
-        -d '{"instances": [[[0.1, 0.2, 0.3]]]}' | jq . 2>/dev/null || echo "Request failed as expected"
+    curl -X POST -s -H "Authorization: Bearer $TOKEN_USER_A" -H "Content-Type: application/json" \
+        http://pytorch-resnet-predictor.tenant-c.127.0.0.1.sslip.io:8080/v1/models/mnist:predict \
+-d '{"instances": [{"data": "iVBORw0KGgoAAAANSUhEUgAAABwAAAAcCAAAAABXZoBIAAAAw0lEQVR4nGNgGFggVVj4/y8Q2GOR83n+58/fP0DwcSqmpNN7oOTJw6f+/H2pjUU2JCSEk0EWqN0cl828e/FIxvz9/9cCh1zS5z9/G9mwyzl/+PNnKQ45nyNAr9ThMHQ/UG4tDofuB4bQIhz6fIBenMWJQ+7Vn7+zeLCbKXv6z59NOPQVgsIcW4QA9YFi6wNQLrKwsBebW/68DJ388Nun5XFocrqvIFH59+XhBAxThTfeB0r+vP/QHbuDCgr2JmOXoSsAAKK7bU3vISS4AAAAAElFTkSuQmCC"}]}' | jq . 2>/dev/null || echo "Request failed as expected"
     
     # Clean up port-forward
     kill $GATEWAY_PF 2>/dev/null || true

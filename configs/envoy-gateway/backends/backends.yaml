@@ -6,7 +6,7 @@ metadata:
 spec:
   endpoints:
   - fqdn:
-      hostname: sklearn-iris-predictor-default.tenant-a.svc.cluster.local
+      hostname: sklearn-iris-predictor.tenant-a.svc.cluster.local
       port: 80
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
@@ -17,7 +17,7 @@ metadata:
 spec:
   endpoints:
   - fqdn:
-      hostname: pytorch-resnet-predictor-default.tenant-c.svc.cluster.local
+      hostname: pytorch-resnet-predictor.tenant-c.svc.cluster.local
       port: 80
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1

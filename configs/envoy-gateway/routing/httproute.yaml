@@ -8,7 +8,6 @@ spec:
   - name: ai-inference-gateway
     namespace: envoy-gateway-system
   rules:
-  # Direct model routes with JWT authentication
   - matches:
     - path:
         type: PathPrefix
@@ -26,13 +25,13 @@ spec:
         - name: x-gateway
           value: ai-gateway
     backendRefs:
-    - name: sklearn-iris-predictor-default
-      namespace: tenant-a
+    - name: istio-ingressgateway
+      namespace: istio-system
       port: 80
   - matches:
     - path:
         type: PathPrefix
-        value: /v1/models/pytorch-resnet
+        value: /v1/models/mnist
       headers:
       - name: authorization
         type: RegularExpression
@@ -46,8 +45,8 @@ spec:
         - name: x-gateway
           value: ai-gateway
     backendRefs:
-    - name: pytorch-resnet-predictor-default
-      namespace: tenant-c
+    - name: istio-ingressgateway
+      namespace: istio-system
       port: 80
   # Fallback to Istio Gateway for other routes
   - matches:
