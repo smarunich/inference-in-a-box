@@ -1,0 +1,100 @@
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: envoy-gateway-to-tenant-a
+  namespace: tenant-a
+spec:
+  from:
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    namespace: envoy-gateway-system
+  - group: gateway.envoyproxy.io
+    kind: Backend
+    namespace: envoy-gateway-system
+  - group: aigateway.envoyproxy.io
+    kind: AIServiceBackend
+    namespace: envoy-gateway-system
+  to:
+  - group: ""
+    kind: Service
+    name: sklearn-iris-predictor-default
+---
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: envoy-gateway-to-tenant-b
+  namespace: tenant-b
+spec:
+  from:
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    namespace: envoy-gateway-system
+  - group: gateway.envoyproxy.io
+    kind: Backend
+    namespace: envoy-gateway-system
+  - group: aigateway.envoyproxy.io
+    kind: AIServiceBackend
+    namespace: envoy-gateway-system
+  to:
+  - group: ""
+    kind: Service
+---
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: envoy-gateway-to-tenant-c
+  namespace: tenant-c
+spec:
+  from:
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    namespace: envoy-gateway-system
+  - group: gateway.envoyproxy.io
+    kind: Backend
+    namespace: envoy-gateway-system
+  - group: aigateway.envoyproxy.io
+    kind: AIServiceBackend
+    namespace: envoy-gateway-system
+  to:
+  - group: ""
+    kind: Service
+    name: pytorch-resnet-predictor-default
+---
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: envoy-gateway-to-default
+  namespace: default
+spec:
+  from:
+  - group: gateway.envoyproxy.io
+    kind: Backend
+    namespace: envoy-gateway-system
+  - group: gateway.envoyproxy.io
+    kind: SecurityPolicy
+    namespace: envoy-gateway-system
+  to:
+  - group: ""
+    kind: Service
+    name: jwt-server
+---
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: envoy-gateway-to-istio-system
+  namespace: istio-system
+spec:
+  from:
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    namespace: envoy-gateway-system
+  - group: gateway.envoyproxy.io
+    kind: Backend
+    namespace: envoy-gateway-system
+  - group: aigateway.envoyproxy.io
+    kind: AIServiceBackend
+    namespace: envoy-gateway-system
+  to:
+  - group: ""
+    kind: Service
+    name: istio-ingressgateway

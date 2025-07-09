@@ -1,0 +1,153 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendSecurityPolicy
+metadata:
+  name: model-backend-security
+  namespace: envoy-gateway-system
+spec:
+  targetRefs:
+  - group: gateway.envoyproxy.io
+    kind: Backend
+    name: sklearn-iris-backend
+  - group: gateway.envoyproxy.io
+    kind: Backend
+    name: pytorch-resnet-backend
+  basicAuth:
+    users:
+      name: model-auth-secret
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: model-auth-secret
+  namespace: envoy-gateway-system
+type: Opaque
+stringData:
+  .htpasswd: |
+    tenant-a:$2y$10$hBmSqrwm8QHk4gHDnLNGKOzqR8v6HqGNx3XZNJFyYMmjVDgNLgk7K
+    tenant-b:$2y$10$hBmSqrwm8QHk4gHDnLNGKOzqR8v6HqGNx3XZNJFyYMmjVDgNLgk7K
+    tenant-c:$2y$10$hBmSqrwm8QHk4gHDnLNGKOzqR8v6HqGNx3XZNJFyYMmjVDgNLgk7K
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendSecurityPolicy
+metadata:
+  name: api-key-security
+  namespace: envoy-gateway-system
+spec:
+  targetRefs:
+  - group: gateway.envoyproxy.io
+    kind: Backend
+    name: sklearn-iris-backend
+  - group: gateway.envoyproxy.io
+    kind: Backend
+    name: pytorch-resnet-backend
+  extAuth:
+    headersToBackend:
+    - x-tenant
+    - x-model
+    - authorization
+    headersToExtAuth:
+    - authorization
+    - x-tenant
+    - x-model
+    service:
+      name: ext-auth-service
+      namespace: envoy-gateway-system
+      port: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ext-auth-service
+  namespace: envoy-gateway-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ext-auth-service
+  template:
+    metadata:
+      labels:
+        app: ext-auth-service
+    spec:
+      containers:
+      - name: auth-service
+        image: gcr.io/istio-release/ext-authz:1.20.0
+        ports:
+        - containerPort: 8080
+        env:
+        - name: SERVICE_PORT
+          value: "8080"
+        - name: LOG_LEVEL
+          value: debug
+        command:
+        - /bin/sh
+        - -c
+        - |
+          cat > /tmp/auth-server.py << 'EOF'
+          import http.server
+          import socketserver
+          import json
+          import base64
+          import os
+          
+          class AuthHandler(http.server.BaseHTTPRequestHandler):
+              def do_POST(self):
+                  content_length = int(self.headers['Content-Length'])
+                  post_data = self.rfile.read(content_length)
+                  
+                  # Simple JWT validation logic
+                  auth_header = self.headers.get('authorization', '')
+                  tenant_header = self.headers.get('x-tenant', '')
+                  
+                  if auth_header.startswith('Bearer '):
+                      # Allow requests with JWT tokens
+                      self.send_response(200)
+                      self.send_header('Content-Type', 'application/json')
+                      self.send_header('x-auth-result', 'allowed')
+                      self.end_headers()
+                      
+                      response = {
+                          "allowed": True,
+                          "headers": {
+                              "x-auth-user": tenant_header,
+                              "x-auth-method": "jwt"
+                          }
+                      }
+                      self.wfile.write(json.dumps(response).encode())
+                  else:
+                      # Deny requests without proper authentication
+                      self.send_response(403)
+                      self.send_header('Content-Type', 'application/json')
+                      self.end_headers()
+                      
+                      response = {
+                          "allowed": False,
+                          "denied_response": {
+                              "status": {"code": 403},
+                              "body": "Authentication required"
+                          }
+                      }
+                      self.wfile.write(json.dumps(response).encode())
+          
+          if __name__ == '__main__':
+              PORT = int(os.environ.get('SERVICE_PORT', 8080))
+              with socketserver.TCPServer(("", PORT), AuthHandler) as httpd:
+                  print(f"External Auth Service running on port {PORT}")
+                  httpd.serve_forever()
+          EOF
+          
+          python3 /tmp/auth-server.py
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ext-auth-service
+  namespace: envoy-gateway-system
+spec:
+  selector:
+    app: ext-auth-service
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+  type: ClusterIP

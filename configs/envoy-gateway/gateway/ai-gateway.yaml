@@ -23,6 +23,10 @@ spec:
       certificateRefs:
       - kind: Secret
         name: ai-gateway-tls
+      options:
+        tls.cipher_suites: ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256
+        tls.min_protocol_version: TLSv1.2
+        tls.max_protocol_version: TLSv1.3
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIGatewayRoute

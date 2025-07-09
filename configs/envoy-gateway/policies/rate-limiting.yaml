@@ -12,14 +12,19 @@ spec:
     type: Global
     global:
       rules:
-      # Per-tenant rate limiting
+      # Token-based rate limiting per tenant and model
       - clientSelectors:
         - headers:
           - name: "x-tenant"
             value: "tenant-a"
+          - name: "x-model"
+            value: "sklearn-iris"
         limit:
           requests: 100
           unit: Minute
+        metadata:
+          key: "tenant-a-sklearn-iris"
+          value: "token-based-limit"
       - clientSelectors:
         - headers:
           - name: "x-tenant"
@@ -27,17 +32,40 @@ spec:
         limit:
           requests: 100
           unit: Minute
+        metadata:
+          key: "tenant-b-general"
+          value: "token-based-limit"
       - clientSelectors:
         - headers:
           - name: "x-tenant"
             value: "tenant-c"
+          - name: "x-model"
+            value: "pytorch-resnet"
         limit:
           requests: 100
           unit: Minute
-      # Global rate limiting
+        metadata:
+          key: "tenant-c-pytorch-resnet"
+          value: "token-based-limit"
+      # JWT-based rate limiting
+      - clientSelectors:
+        - headers:
+          - name: "authorization"
+            type: RegularExpression
+            value: "Bearer .*"
+        limit:
+          requests: 500
+          unit: Minute
+        metadata:
+          key: "jwt-authenticated-users"
+          value: "authenticated-limit"
+      # Global rate limiting with cost tracking
       - limit:
           requests: 1000
           unit: Minute
+        metadata:
+          key: "global-limit"
+          value: "cost-0"
   circuitBreaker:
     maxConnections: 100
     maxPendingRequests: 50
@@ -58,8 +86,11 @@ spec:
     tcp:
       connectTimeout: 10s
     http:
-      requestTimeout: 30s
-      connectionIdleTimeout: 60s
+      requestTimeout: 60s
+      connectionIdleTimeout: 300s
+      requestHeaderTimeout: 10s
+      streamIdleTimeout: 30s
+      maxStreamDuration: 300s
   healthCheck:
     active:
       timeout: 1s

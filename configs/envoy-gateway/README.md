@@ -11,15 +11,18 @@ envoy-gateway/
 │   ├── gatewayclass.yaml    # Gateway class definitions
 │   └── ai-gateway.yaml      # Main AI inference gateway
 ├── security/                 # Security and authentication
-│   └── jwt-security-policy.yaml # JWT authentication and authorization
+│   ├── jwt-security-policy.yaml # JWT authentication and authorization
+│   ├── reference-grants.yaml    # Cross-namespace access grants
+│   └── backend-security-policy.yaml # Backend API key management
 ├── backends/                 # Backend service definitions
 │   ├── backends.yaml        # Standard backend definitions
-│   ├── ai-backends.yaml     # AI-specific backend configurations
-│   └── ai-service-backends.yaml # AI service backend mappings
+│   └── ai-service-backends.yaml # AI service backend mappings (consolidated)
 ├── routing/                  # Traffic routing configuration
 │   └── httproute.yaml       # HTTP route definitions
-└── policies/                 # Traffic policies
-    └── rate-limiting.yaml   # Rate limiting and traffic policies
+├── policies/                 # Traffic policies
+│   └── rate-limiting.yaml   # Rate limiting and traffic policies
+└── observability/            # Monitoring and telemetry
+    └── telemetry-config.yaml # Performance tracking configuration
 ```
 
 ## Architecture Overview
@@ -129,9 +132,13 @@ graph TB
         B3[Backend<br/>istio-gateway-backend]
         B4[Backend<br/>remote-jwks]
         
-        ASB1[AIServiceBackend<br/>sklearn-iris-backend]
-        ASB2[AIServiceBackend<br/>pytorch-resnet-backend]
-        ASB3[AIServiceBackend<br/>istio-gateway-backend]
+        ASB1[AIServiceBackend<br/>sklearn-iris-backend<br/>aigateway.envoyproxy.io]
+        ASB2[AIServiceBackend<br/>pytorch-resnet-backend<br/>aigateway.envoyproxy.io]
+        ASB3[AIServiceBackend<br/>istio-gateway-backend<br/>aigateway.envoyproxy.io]
+        
+        DASB1[AIServiceBackend<br/>sklearn-iris-direct-backend<br/>gateway.envoyproxy.io]
+        DASB2[AIServiceBackend<br/>pytorch-resnet-direct-backend<br/>gateway.envoyproxy.io]
+        DASB3[AIServiceBackend<br/>istio-gateway-direct-backend<br/>gateway.envoyproxy.io]
     end
     
     subgraph "Security & Policies" [Security & Traffic Management]
@@ -152,6 +159,11 @@ graph TB
     B1 -->|backendRef| ASB1
     B2 -->|backendRef| ASB2
     B3 -->|backendRef| ASB3
+    
+    %% Direct Backend Relationships (standalone)
+    DASB1 -.->|direct FQDN| MS1
+    DASB2 -.->|direct FQDN| MS2
+    DASB3 -.->|direct FQDN| IS
     
     %% Security Policy Relationships
     SP -->|targetRefs| HR
@@ -184,7 +196,7 @@ graph TB
     classDef routing fill:#f3e5f5
     
     class GC,G,AGR gateway
-    class B1,B2,B3,B4,ASB1,ASB2,ASB3 backend
+    class B1,B2,B3,B4,ASB1,ASB2,ASB3,DASB1,DASB2,DASB3 backend
     class SP,BTP security
     class HR routing
 ```
@@ -365,10 +377,31 @@ graph LR
   - Retry mechanism for JWKS fetching
   - Claims validation for tenant access
 
+#### `reference-grants.yaml`
+- **Purpose**: Cross-namespace access permissions (KServe best practice)
+- **Resources**: ReferenceGrant objects for secure cross-namespace communication
+- **Key Features**:
+  - Envoy Gateway → Tenant namespace access
+  - Envoy Gateway → Default namespace (JWT server)
+  - Envoy Gateway → Istio system (fallback)
+  - Granular permissions for HTTPRoute, Backend, and AIServiceBackend
+
+#### `backend-security-policy.yaml`
+- **Purpose**: Backend API key management and external authentication
+- **Resources**:
+  - `model-backend-security`: BackendSecurityPolicy with basic auth
+  - `api-key-security`: External auth service integration
+  - `ext-auth-service`: Custom authentication service
+- **Key Features**:
+  - Multi-layer authentication (JWT + API keys)
+  - Custom external auth service with tenant validation
+  - Secure credential management via Kubernetes secrets
+
 **Security Model**:
-- **Authentication**: Bearer token validation against JWT server
+- **Authentication**: Multi-layer (JWT + API keys + external auth)
 - **Authorization**: Tenant claim validation (`tenant-a`, `tenant-b`, `tenant-c`)
-- **Default**: Deny all requests without valid JWT
+- **Cross-namespace**: Secured with ReferenceGrants
+- **Default**: Deny all requests without proper authentication
 
 ### Backend Configuration (`backends/`)
 
@@ -378,23 +411,26 @@ graph LR
   - `sklearn-iris-backend`: scikit-learn model backend
   - `pytorch-resnet-backend`: PyTorch model backend
   - `istio-gateway-backend`: Fallback to Istio gateway
+  - `remote-jwks`: JWT server JWKS endpoint
 - **Key Features**: FQDN-based service discovery
 
-#### `ai-backends.yaml`
-- **Purpose**: AI-specific backend configurations (legacy)
-- **Resources**: AIServiceBackend definitions with retry policies
+#### `ai-service-backends.yaml` (Consolidated)
+- **Purpose**: Unified AI service backend configurations
+- **Resources**: 
+  - **AI Gateway Backends** (`aigateway.envoyproxy.io/v1alpha1`):
+    - Reference standard Backend resources
+    - Add OpenAI schema compatibility
+    - Unified AI service interface
+  - **Legacy Direct Backends** (`gateway.envoyproxy.io/v1alpha1`):
+    - Standalone AI backends with direct service configuration
+    - Configurable timeouts (60s for AI workloads)
+    - Retry mechanisms with exponential backoff
+    - Path prefix routing
 - **Key Features**:
-  - Configurable timeouts (30s)
-  - Retry mechanisms with exponential backoff
-  - Path prefix routing
-
-#### `ai-service-backends.yaml`
-- **Purpose**: AI service backend mappings
-- **Resources**: AIServiceBackend resources with OpenAI schema
-- **Key Features**:
+  - Dual backend approach for flexibility
   - OpenAI API compatibility
-  - Backend reference mapping
-  - Standardized AI service interface
+  - Optimized timeouts for AI workloads
+  - Comprehensive retry policies
 
 ### Routing Configuration (`routing/`)
 
@@ -415,19 +451,53 @@ graph LR
 - **Purpose**: Traffic management and resilience policies
 - **Resources**: `ai-gateway-traffic-policy` BackendTrafficPolicy
 - **Key Features**:
-  - **Rate Limiting**:
-    - Per-tenant: 100 requests/minute
-    - Global: 1000 requests/minute
+  - **Token-based Rate Limiting** (KServe optimized):
+    - Per-tenant + per-model: 100 requests/minute
+    - JWT-authenticated users: 500 requests/minute
+    - Global with cost tracking: 1000 requests/minute
+    - Metadata tracking for token usage
   - **Circuit Breaker**:
     - Max connections: 100
     - Max pending requests: 50
     - Max parallel requests: 200
   - **Retry Policy**: 3 retries on 5xx errors
-  - **Timeouts**: 
+  - **Optimized Timeouts** (KServe recommended):
     - TCP connect: 10s
-    - HTTP request: 30s
-    - Connection idle: 60s
+    - HTTP request: 60s (increased for AI workloads)
+    - Connection idle: 300s (5 minutes)
+    - Request header timeout: 10s
+    - Stream idle timeout: 30s
+    - Max stream duration: 300s
   - **Health Checks**: Active health monitoring
+
+### Observability Configuration (`observability/`)
+
+#### `telemetry-config.yaml`
+- **Purpose**: Performance tracking and monitoring (KServe best practice)
+- **Resources**: 
+  - `ai-gateway-telemetry`: EnvoyProxy with telemetry configuration
+  - `ai-gateway-observability`: BackendTrafficPolicy with custom metrics
+  - `ai-gateway-dashboard`: Grafana dashboard configuration
+- **Key Features**:
+  - **Metrics Collection**:
+    - Model request rates and response times
+    - Token usage tracking (input/output)
+    - Per-tenant and per-model metrics
+    - Error rates and success rates
+  - **Distributed Tracing**:
+    - OpenTelemetry integration
+    - Jaeger backend support
+    - Request correlation across services
+  - **Access Logging**:
+    - Structured logging with tenant/model context
+    - Token consumption logging
+    - JWT subject tracking
+    - OpenTelemetry log export
+  - **Custom Dashboards**:
+    - Grafana dashboard for AI Gateway performance
+    - Token usage visualization
+    - Error rate monitoring by tenant
+    - Request latency percentiles
 
 ## Deployment Order
 
@@ -442,12 +512,14 @@ Deploy configurations in the following order to ensure proper dependencies:
 2. **Backend Services**:
    ```bash
    kubectl apply -f backends/backends.yaml
-   kubectl apply -f backends/ai-service-backends.yaml
+   kubectl apply -f backends/ai-service-backends.yaml  # Consolidated AI backends
    ```
 
-3. **Security Policies**:
+3. **Security Policies** (KServe optimized):
    ```bash
+   kubectl apply -f security/reference-grants.yaml
    kubectl apply -f security/jwt-security-policy.yaml
+   kubectl apply -f security/backend-security-policy.yaml
    ```
 
 4. **Routing Rules**:
@@ -458,6 +530,11 @@ Deploy configurations in the following order to ensure proper dependencies:
 5. **Traffic Policies**:
    ```bash
    kubectl apply -f policies/rate-limiting.yaml
+   ```
+
+6. **Observability** (KServe monitoring):
+   ```bash
+   kubectl apply -f observability/telemetry-config.yaml
    ```
 
 ## Configuration Validation

@@ -1,0 +1,141 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: ai-gateway-telemetry
+  namespace: envoy-gateway-system
+spec:
+  telemetry:
+    metrics:
+      prometheus:
+        disable: false
+      sinks:
+      - type: OpenTelemetry
+        openTelemetry:
+          service: otel-collector.monitoring.svc.cluster.local
+          port: 4317
+    tracing:
+      provider:
+        type: OpenTelemetry
+        openTelemetry:
+          service: jaeger-collector.monitoring.svc.cluster.local
+          port: 14250
+    accessLog:
+      settings:
+      - format:
+          type: Text
+          text: |
+            [%START_TIME%] "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%"
+            %RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT%
+            %DURATION% %RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)% "%REQ(X-FORWARDED-FOR)%"
+            "%REQ(USER-AGENT)%" "%REQ(X-REQUEST-ID)%" "%REQ(:AUTHORITY)%" "%UPSTREAM_HOST%"
+            tenant="%REQ(X-TENANT)%" model="%REQ(X-MODEL)%" jwt_sub="%REQ(X-JWT-SUB)%"
+            tokens_in="%REQ(X-TOKENS-IN)%" tokens_out="%REQ(X-TOKENS-OUT)%"
+        sinks:
+        - type: File
+          file:
+            path: /tmp/access.log
+        - type: OpenTelemetry
+          openTelemetry:
+            service: otel-collector.monitoring.svc.cluster.local
+            port: 4317
+            resources:
+              service.name: ai-gateway
+              service.version: v1.0.0
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: ai-gateway-observability
+  namespace: envoy-gateway-system
+spec:
+  targetRefs:
+  - group: gateway.networking.k8s.io
+    kind: Gateway
+    name: ai-inference-gateway
+  proxyMetadata:
+    custom_metrics:
+      - name: ai_model_requests_total
+        type: counter
+        tags:
+          tenant: "%REQ(X-TENANT)%"
+          model: "%REQ(X-MODEL)%"
+          response_code: "%RESPONSE_CODE%"
+      - name: ai_model_request_duration_seconds
+        type: histogram
+        tags:
+          tenant: "%REQ(X-TENANT)%"
+          model: "%REQ(X-MODEL)%"
+        value: "%DURATION%"
+      - name: ai_model_tokens_processed
+        type: counter
+        tags:
+          tenant: "%REQ(X-TENANT)%"
+          model: "%REQ(X-MODEL)%"
+          direction: "in"
+        value: "%REQ(X-TOKENS-IN)%"
+      - name: ai_model_tokens_generated
+        type: counter
+        tags:
+          tenant: "%REQ(X-TENANT)%"
+          model: "%REQ(X-MODEL)%"
+          direction: "out"
+        value: "%REQ(X-TOKENS-OUT)%"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ai-gateway-dashboard
+  namespace: monitoring
+data:
+  dashboard.json: |
+    {
+      "dashboard": {
+        "title": "AI Gateway Performance Dashboard",
+        "panels": [
+          {
+            "title": "Model Request Rate",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(ai_model_requests_total[5m])",
+                "legendFormat": "{{tenant}}-{{model}}"
+              }
+            ]
+          },
+          {
+            "title": "Model Response Time",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.95, ai_model_request_duration_seconds_bucket)",
+                "legendFormat": "95th percentile"
+              }
+            ]
+          },
+          {
+            "title": "Token Usage",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(ai_model_tokens_processed[5m])",
+                "legendFormat": "Input Tokens"
+              },
+              {
+                "expr": "rate(ai_model_tokens_generated[5m])",
+                "legendFormat": "Output Tokens"
+              }
+            ]
+          },
+          {
+            "title": "Error Rate by Tenant",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(ai_model_requests_total{response_code!~\"2..\"}[5m])",
+                "legendFormat": "{{tenant}} errors"
+              }
+            ]
+          }
+        ]
+      }
+    }

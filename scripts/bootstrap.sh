@@ -356,13 +356,18 @@ install_envoy_ai_gateway() {
     kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/backends/ai-service-backends.yaml
     
     # Apply Security policies
+    kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/security/reference-grants.yaml
     kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/security/jwt-security-policy.yaml
+    #kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/security/backend-security-policy.yaml
     
     # Apply Routing configuration
     kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/routing/httproute.yaml
     
     # Apply Traffic policies
     kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/policies/rate-limiting.yaml
+    
+    # Apply Observability configurations
+    kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/observability/telemetry-config.yaml
     
     # Wait for gateway to be ready
     log "Waiting for AI Gateway to be ready..."
