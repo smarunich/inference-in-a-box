@@ -20,7 +20,7 @@ envoy-gateway/
 ├── routing/                  # Traffic routing configuration
 │   └── httproute.yaml       # HTTP route definitions
 ├── policies/                 # Traffic policies
-│   └── rate-limiting.yaml   # Rate limiting and traffic policies
+│   └── rate-limiting.yaml   # AI Gateway usage-based rate limiting and traffic policies
 └── observability/            # Monitoring and telemetry
     └── telemetry-config.yaml # Performance tracking configuration
 ```
@@ -354,6 +354,11 @@ graph LR
   - TLS termination with `ai-gateway-tls` certificate
   - Tenant-based routing with header matching
   - OpenAI schema compatibility
+  - **AI Gateway Token Tracking**:
+    - Input token tracking (`llm_input_token`)
+    - Output token tracking (`llm_output_token`)
+    - Total token tracking (`llm_total_token`)
+    - Automatic token extraction from OpenAI responses
 
 ### Security Configuration (`security/`)
 
@@ -437,14 +442,12 @@ graph LR
 - **Purpose**: AI Gateway usage-based rate limiting and traffic management
 - **Resources**: `ai-gateway-traffic-policy` BackendTrafficPolicy
 - **Key Features**:
-  - **AI Gateway Token Tracking**:
-    - Input token tracking (`llm_input_token`)
-    - Output token tracking (`llm_output_token`)
-    - Total token tracking (`llm_total_token`)
-  - **Usage-based Rate Limiting**:
-    - Per-model token limits: 1000 tokens/hour (sklearn-iris, pytorch-resnet)
-    - Request cost set to 0 (token-only tracking)
-    - Response cost from token metadata
+  - **Token-based Rate Limiting** (follows AI Gateway official documentation):
+    - sklearn-iris model: 10000 tokens/hour (request cost = 0, response cost = token count)
+    - pytorch-resnet model: 10000 tokens/hour (request cost = 0, response cost = token count)
+    - Token tracking via AI Gateway metadata (`llm_total_token`)
+    - Header-based routing with `x-tenant` and `x-ai-eg-model`
+  - **Standard Rate Limiting**:
     - Per-tenant general limits: 100 requests/minute
     - JWT-authenticated users: 500 requests/minute
     - Global limit: 10000 requests/hour
