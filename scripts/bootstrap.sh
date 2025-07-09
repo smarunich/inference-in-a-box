@@ -347,28 +347,22 @@ install_envoy_ai_gateway() {
     # Workaround for > Warning  FailedMount  15s (x6 over 31s)  kubelet            MountVolume.SetUp failed for volume "ai-gateway-ai-inference-gateway-envoy-gateway-system" : secret "ai-inference-gateway-envoy-gateway-system" not found
     kubectl create secret generic ai-inference-gateway-envoy-gateway-system -n envoy-gateway-system
     
-    # Apply GatewayClass
-    kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/gatewayclass.yaml
+    # Apply Gateway foundation configurations
+    kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/gateway/gatewayclass.yaml
+    kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/gateway/ai-gateway.yaml
     
-    # Apply JWT Security Policy
-    kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/jwt-security-policy.yaml
+    # Apply Backend resources
+    kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/backends/backends.yaml
+    kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/backends/ai-service-backends.yaml
     
-    # Apply Backend resources first
-    kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/backends.yaml
+    # Apply Security policies
+    kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/security/jwt-security-policy.yaml
     
-    # Apply AI service backends
-    kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/ai-service-backends.yaml
+    # Apply Routing configuration
+    kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/routing/httproute.yaml
     
-    # Apply AI Gateway configuration
-    kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/ai-gateway.yaml
-    
-    # Apply HTTPRoute for routing (if exists)
-    if [ -f "${PROJECT_DIR}/configs/envoy-gateway/httproute.yaml" ]; then
-        kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/httproute.yaml
-    fi
-    
-    # Apply rate limiting policies
-    kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/rate-limiting.yaml
+    # Apply Traffic policies
+    kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/policies/rate-limiting.yaml
     
     # Wait for gateway to be ready
     log "Waiting for AI Gateway to be ready..."
