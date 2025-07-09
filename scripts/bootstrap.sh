@@ -353,7 +353,7 @@ install_envoy_ai_gateway() {
     
     # Apply Backend resources
     kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/backends/backends.yaml
-    kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/backends/ai-service-backends.yaml
+    #kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/backends/ai-service-backends.yaml
     
     # Apply Security policies
 
@@ -362,6 +362,7 @@ install_envoy_ai_gateway() {
     
     # Apply Routing configuration
     kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/routing/httproute.yaml
+    #kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/routing/ai-gatewayroute.yaml
     
     # Apply Traffic policies
     kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/policies/rate-limiting.yaml

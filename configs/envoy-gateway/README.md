@@ -18,7 +18,8 @@ envoy-gateway/
 │   ├── backends.yaml        # Standard backend definitions
 │   └── ai-service-backends.yaml # AI service backend mappings
 ├── routing/                  # Traffic routing configuration
-│   └── httproute.yaml       # HTTP route definitions
+│   ├── httproute.yaml       # HTTP route definitions
+│   └── ai-gatewayroute.yaml # AI Gateway routing and token tracking
 ├── policies/                 # Traffic policies
 │   └── rate-limiting.yaml   # AI Gateway usage-based rate limiting and traffic policies
 └── observability/            # Monitoring and telemetry
@@ -123,7 +124,6 @@ graph TB
     subgraph "Gateway Foundation" [Gateway Foundation]
         GC[GatewayClass<br/>ai-gateway-class]
         G[Gateway<br/>ai-inference-gateway]
-        AGR[AIGatewayRoute<br/>ai-inference-gateway]
     end
     
     subgraph "Backend Definitions" [Backend Services]
@@ -144,6 +144,7 @@ graph TB
     
     subgraph "Routing Configuration" [Traffic Routing]
         HR[HTTPRoute<br/>ai-inference-routes]
+        AGR[AIGatewayRoute<br/>ai-inference-gateway]
     end
     
     %% Gateway Foundation Relationships
@@ -290,6 +291,7 @@ graph LR
     subgraph Configuration ["Configuration Files"]
         GCF[gateway/gatewayclass.yaml]
         AGF[gateway/ai-gateway.yaml]
+        AGRF[routing/ai-gatewayroute.yaml]
         SPF[security/jwt-security-policy.yaml]
         BEF[backends/backends.yaml]
         ASBF[backends/ai-service-backends.yaml]
@@ -307,6 +309,7 @@ graph LR
     %% Configuration to Runtime Mapping
     GCF --> EG
     AGF --> EP
+    AGRF --> EP
     SPF --> JS
     BEF --> MS
     ASBF --> MS
@@ -324,12 +327,14 @@ graph LR
     BEF -.-> ASBF
     ASBF -.-> SPF
     SPF -.-> HRF
+    SPF -.-> AGRF
     HRF -.-> TPF
+    AGRF -.-> TPF
     
     classDef config fill:#e3f2fd,stroke:#0277bd
     classDef runtime fill:#fff8e1,stroke:#f57c00
     
-    class GCF,AGF,SPF,BEF,ASBF,HRF,TPF config
+    class GCF,AGF,AGRF,SPF,BEF,ASBF,HRF,TPF config
     class EG,EP,JS,MS runtime
 ```
 
@@ -346,19 +351,13 @@ graph LR
 
 #### `ai-gateway.yaml`
 - **Purpose**: Main gateway configuration for AI inference
-- **Resources**:
-  - `ai-inference-gateway`: Primary gateway with HTTP/HTTPS listeners
-  - `ai-inference-gateway` (AIGatewayRoute): AI-specific routing rules
+- **Resources**: `ai-inference-gateway` Gateway
 - **Key Features**:
   - HTTP (port 80) and HTTPS (port 443) listeners
   - TLS termination with `ai-gateway-tls` certificate
-  - Tenant-based routing with header matching
-  - OpenAI schema compatibility
-  - **AI Gateway Token Tracking**:
-    - Input token tracking (`llm_input_token`)
-    - Output token tracking (`llm_output_token`)
-    - Total token tracking (`llm_total_token`)
-    - Automatic token extraction from OpenAI responses
+  - Secure TLS configuration (TLSv1.2+, modern cipher suites)
+  - Cross-namespace route allowance
+
 
 ### Security Configuration (`security/`)
 
@@ -436,6 +435,22 @@ graph LR
   - **Fallback Routing**: Unmatched requests forwarded to Istio gateway
   - **Authorization**: Bearer token requirement for model routes
 
+#### `ai-gatewayroute.yaml`
+- **Purpose**: AI Gateway routing and token tracking configuration
+- **Resources**: `ai-inference-gateway` AIGatewayRoute
+- **Key Features**:
+  - OpenAI schema compatibility
+  - Tenant-based routing with header matching (`x-tenant`, `x-ai-eg-model`)
+  - **AI Gateway Token Tracking**:
+    - Input token tracking (`llm_input_token`)
+    - Output token tracking (`llm_output_token`)
+    - Total token tracking (`llm_total_token`)
+    - Automatic token extraction from OpenAI responses
+  - **Routing Rules**:
+    - sklearn-iris model → tenant-a backend
+    - pytorch-resnet model → tenant-c backend
+    - Default fallback → istio-gateway backend
+
 ### Policy Configuration (`policies/`)
 
 #### `rate-limiting.yaml`
@@ -511,6 +526,7 @@ Deploy configurations in the following order to ensure proper dependencies:
 4. **Routing Rules**:
    ```bash
    kubectl apply -f routing/httproute.yaml
+   kubectl apply -f routing/ai-gatewayroute.yaml
    ```
 
 5. **Traffic Policies**:
