@@ -6,25 +6,46 @@ metadata:
 spec:
   targetRefs:
   - group: gateway.networking.k8s.io
-    kind: Gateway
-    name: ai-inference-gateway
+    kind: HTTPRoute
+    name: ai-inference-routes
   jwt:
     providers:
-    - name: tenant-a-provider
+    - name: inference-in-a-box
       issuer: "inference-in-a-box"
-      audiences:
-      - "tenant-a"
       remoteJWKS:
-        uri: "http://jwt-server.default.svc.cluster.local:8080/.well-known/jwks.json"
-    - name: tenant-b-provider
-      issuer: "inference-in-a-box"
-      audiences:
-      - "tenant-b"
-      remoteJWKS:
-        uri: "http://jwt-server.default.svc.cluster.local:8080/.well-known/jwks.json"
-    - name: tenant-c-provider
-      issuer: "inference-in-a-box"
-      audiences:
-      - "tenant-c"
-      remoteJWKS:
-        uri: "http://jwt-server.default.svc.cluster.local:8080/.well-known/jwks.json"
+        backendRefs:
+          - group: gateway.envoyproxy.io
+            kind: Backend
+            name: remote-jwks
+            port: 8080
+        backendSettings:
+          retry:
+            numRetries: 3
+            perRetry:
+              backOff:
+                baseInterval: 1s
+                maxInterval: 5s
+            retryOn:
+              triggers: ["5xx", "gateway-error", "reset"]
+        uri: http://jwt-server.default.svc.cluster.local:8080/.well-known/jwks.json
+  authorization:
+    defaultAction: Deny
+    rules:
+    - action: Allow
+      principal:
+        jwt:
+          provider: inference-in-a-box
+          claims:
+          - name: "tenant"
+            values: ["tenant-a", "tenant-b", "tenant-c"]
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: remote-jwks
+  namespace: envoy-gateway-system
+spec:
+  endpoints:
+  - fqdn:
+      hostname: jwt-server.default.svc.cluster.local
+      port: 8080

@@ -46,23 +46,16 @@ if curl -f -s http://localhost:8081/tokens >/dev/null 2>&1; then
     echo "     -d '{\"instances\": [[5.1, 3.5, 1.4, 0.2]]}'"
     
 else
-    # Fallback to hardcoded tokens
-    echo -e "${YELLOW}Using hardcoded demo tokens:${NC}"
-    
-    echo -e "\n${GREEN}Tenant A Token:${NC}"
-    echo "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyLWEiLCJuYW1lIjoiVGVuYW50IEEgVXNlciIsInRlbmFudCI6InRlbmFudC1hIiwiaXNzIjoiaW5mZXJlbmNlLWluLWEtYm94IiwiYXVkIjoidGVuYW50LWEiLCJleHAiOjk5OTk5OTk5OTl9.8Xtgw_eSO-fTZexLFVXME5AQ_jJOf615P7VQGahNdDk"
-    
-    echo -e "\n${GREEN}Tenant B Token:${NC}"
-    echo "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyLWIiLCJuYW1lIjoiVGVuYW50IEIgVXNlciIsInRlbmFudCI6InRlbmFudC1iIiwiaXNzIjoiaW5mZXJlbmNlLWluLWEtYm94IiwiYXVkIjoidGVuYW50LWIiLCJleHAiOjk5OTk5OTk5OTl9.xYKzRQIxgFcQguz4sBDt1M6ZaRPFBEPjjOvpwfEKjaE"
-    
-    echo -e "\n${GREEN}Tenant C Token:${NC}"
-    echo "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyLWMiLCJuYW1lIjoiVGVuYW50IEMgVXNlciIsInRlbmFudCI6InRlbmFudC1jIiwiaXNzIjoiaW5mZXJlbmNlLWluLWEtYm94IiwiYXVkIjoidGVuYW50LWMiLCJleHAiOjk5OTk5OTk5OTl9.YGKj3n_OnUsLaJUBo-xF-_kGOOjwlwn4GWmgdP8kxQ4"
+    echo -e "${YELLOW}⚠ Could not connect to JWT server. Check if it's running.${NC}"
+    exit 1
 fi
 
-echo -e "\n${BLUE}To set as environment variables:${NC}"
-echo "export TOKEN_A=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyLWEiLCJuYW1lIjoiVGVuYW50IEEgVXNlciIsInRlbmFudCI6InRlbmFudC1hIiwiaXNzIjoiaW5mZXJlbmNlLWluLWEtYm94IiwiYXVkIjoidGVuYW50LWEiLCJleHAiOjk5OTk5OTk5OTl9.8Xtgw_eSO-fTZexLFVXME5AQ_jJOf615P7VQGahNdDk\""
-echo "export TOKEN_B=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyLWIiLCJuYW1lIjoiVGVuYW50IEIgVXNlciIsInRlbmFudCI6InRlbmFudC1iIiwiaXNzIjoiaW5mZXJlbmNlLWluLWEtYm94IiwiYXVkIjoidGVuYW50LWIiLCJleHAiOjk5OTk5OTk5OTl9.xYKzRQIxgFcQguz4sBDt1M6ZaRPFBEPjjOvpwfEKjaE\""
-echo "export TOKEN_C=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyLWMiLCJuYW1lIjoiVGVuYW50IEMgVXNlciIsInRlbmFudCI6InRlbmFudC1jIiwiaXNzIjoiaW5mZXJlbmNlLWluLWEtYm94IiwiYXVkIjoidGVuYW50LWMiLCJleHAiOjk5OTk5OTk5OTl9.YGKj3n_OnUsLaJUBo-xF-_kGOOjwlwn4GWmgdP8kxQ4\""
+if [ ! -z "$TOKENS" ]; then
+    echo -e "\n${BLUE}To set as environment variables:${NC}"
+    echo "export TOKEN_A=\"$(echo "$TOKENS" | jq -r '.["tenant-a"]')\""
+    echo "export TOKEN_B=\"$(echo "$TOKENS" | jq -r '.["tenant-b"]')\""
+    echo "export TOKEN_C=\"$(echo "$TOKENS" | jq -r '.["tenant-c"]')\""
+fi
 
 # Cleanup
 kill $PF_PID 2>/dev/null || true

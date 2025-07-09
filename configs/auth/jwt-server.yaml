@@ -20,6 +20,13 @@ spec:
         image: node:18-alpine
         ports:
         - containerPort: 8080
+        env:
+        - name: JWT_ISSUER
+          value: "inference-in-a-box"
+        - name: JWT_EXPIRY_HOURS
+          value: "24"
+        - name: NODE_ENV
+          value: "production"
         command: ["/bin/sh"]
         args:
         - -c
@@ -28,24 +35,90 @@ spec:
           const http = require('http');
           const crypto = require('crypto');
           
-          // Generate a simple JWKS for demo purposes
+          // Generate RSA key pair for JWT signing
+          const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', {
+            modulusLength: 2048,
+            publicKeyEncoding: {
+              type: 'spki',
+              format: 'pem'
+            },
+            privateKeyEncoding: {
+              type: 'pkcs8',
+              format: 'pem'
+            }
+          });
+          
+          // Extract public key components for JWKS
+          const publicKeyObj = crypto.createPublicKey(publicKey);
+          const publicKeyJwk = publicKeyObj.export({ format: 'jwk' });
+          
+          // Generate JWKS with proper RSA public key
           const jwks = {
             "keys": [
               {
-                "kty": "oct",
-                "kid": "demo-key",
-                "k": "c2VjcmV0",
-                "alg": "HS256",
-                "use": "sig"
+                "kty": "RSA",
+                "n": publicKeyJwk.n,
+                "e": publicKeyJwk.e,
+                "alg": "RS256",
+                "use": "sig",
+                "kid": "jwt-server-key-1"
               }
             ]
           };
           
-          // Simple JWT tokens for demo (pre-generated with secret "secret")
+          // Function to generate JWT tokens
+          function generateJWT(payload) {
+            const header = {
+              "alg": "RS256",
+              "typ": "JWT",
+              "kid": "jwt-server-key-1"
+            };
+            
+            const encodedHeader = Buffer.from(JSON.stringify(header)).toString('base64url');
+            const encodedPayload = Buffer.from(JSON.stringify(payload)).toString('base64url');
+            
+            const signature = crypto.sign('RSA-SHA256', Buffer.from(encodedHeader + '.' + encodedPayload), privateKey);
+            const encodedSignature = signature.toString('base64url');
+            
+            return encodedHeader + '.' + encodedPayload + '.' + encodedSignature;
+          }
+          
+          // Get configuration from environment variables
+          const JWT_ISSUER = process.env.JWT_ISSUER || "inference-in-a-box";
+          const JWT_EXPIRY_HOURS = parseInt(process.env.JWT_EXPIRY_HOURS || "24");
+          
+          // Generate tokens for each tenant
+          const now = Math.floor(Date.now() / 1000);
+          const exp = now + (JWT_EXPIRY_HOURS * 60 * 60);
+          
           const tokens = {
-            "tenant-a": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyLWEiLCJuYW1lIjoiVGVuYW50IEEgVXNlciIsInRlbmFudCI6InRlbmFudC1hIiwiaXNzIjoiaW5mZXJlbmNlLWluLWEtYm94IiwiYXVkIjoidGVuYW50LWEiLCJleHAiOjk5OTk5OTk5OTl9.8Xtgw_eSO-fTZexLFVXME5AQ_jJOf615P7VQGahNdDk",
-            "tenant-b": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyLWIiLCJuYW1lIjoiVGVuYW50IEIgVXNlciIsInRlbmFudCI6InRlbmFudC1iIiwiaXNzIjoiaW5mZXJlbmNlLWluLWEtYm94IiwiYXVkIjoidGVuYW50LWIiLCJleHAiOjk5OTk5OTk5OTl9.xYKzRQIxgFcQguz4sBDt1M6ZaRPFBEPjjOvpwfEKjaE",
-            "tenant-c": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyLWMiLCJuYW1lIjoiVGVuYW50IEMgVXNlciIsInRlbmFudCI6InRlbmFudC1jIiwiaXNzIjoiaW5mZXJlbmNlLWluLWEtYm94IiwiYXVkIjoidGVuYW50LWMiLCJleHAiOjk5OTk5OTk5OTl9.YGKj3n_OnUsLaJUBo-xF-_kGOOjwlwn4GWmgdP8kxQ4"
+            "tenant-a": generateJWT({
+              "sub": "user-a",
+              "name": "Tenant A User",
+              "tenant": "tenant-a",
+              "iss": JWT_ISSUER,
+              "aud": "tenant-a",
+              "iat": now,
+              "exp": exp
+            }),
+            "tenant-b": generateJWT({
+              "sub": "user-b",
+              "name": "Tenant B User",
+              "tenant": "tenant-b",
+              "iss": JWT_ISSUER,
+              "aud": "tenant-b",
+              "iat": now,
+              "exp": exp
+            }),
+            "tenant-c": generateJWT({
+              "sub": "user-c",
+              "name": "Tenant C User",
+              "tenant": "tenant-c",
+              "iss": JWT_ISSUER,
+              "aud": "tenant-c",
+              "iat": now,
+              "exp": exp
+            })
           };
           
           const server = http.createServer((req, res) => {
