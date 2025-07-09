@@ -356,7 +356,7 @@ install_envoy_ai_gateway() {
     kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/backends/ai-service-backends.yaml
     
     # Apply Security policies
-    kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/security/reference-grants.yaml
+
     kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/security/jwt-security-policy.yaml
     #kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/security/backend-security-policy.yaml
     
@@ -441,6 +441,9 @@ setup_multitenancy() {
     kubectl label namespace tenant-b istio-injection=enabled --overwrite
     kubectl label namespace tenant-c istio-injection=enabled --overwrite
     
+    # Apply ReferenceGrants for multi-tenant access
+    kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/security/reference-grants.yaml
+
     success "Multi-tenant namespaces setup completed"
 }
 
