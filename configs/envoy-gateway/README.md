@@ -16,7 +16,7 @@ envoy-gateway/
 │   └── backend-security-policy.yaml # Backend API key management
 ├── backends/                 # Backend service definitions
 │   ├── backends.yaml        # Standard backend definitions
-│   └── ai-service-backends.yaml # AI service backend mappings (consolidated)
+│   └── ai-service-backends.yaml # AI service backend mappings
 ├── routing/                  # Traffic routing configuration
 │   └── httproute.yaml       # HTTP route definitions
 ├── policies/                 # Traffic policies
@@ -135,10 +135,6 @@ graph TB
         ASB1[AIServiceBackend<br/>sklearn-iris-backend<br/>aigateway.envoyproxy.io]
         ASB2[AIServiceBackend<br/>pytorch-resnet-backend<br/>aigateway.envoyproxy.io]
         ASB3[AIServiceBackend<br/>istio-gateway-backend<br/>aigateway.envoyproxy.io]
-        
-        DASB1[AIServiceBackend<br/>sklearn-iris-direct-backend<br/>gateway.envoyproxy.io]
-        DASB2[AIServiceBackend<br/>pytorch-resnet-direct-backend<br/>gateway.envoyproxy.io]
-        DASB3[AIServiceBackend<br/>istio-gateway-direct-backend<br/>gateway.envoyproxy.io]
     end
     
     subgraph "Security & Policies" [Security & Traffic Management]
@@ -159,11 +155,6 @@ graph TB
     B1 -->|backendRef| ASB1
     B2 -->|backendRef| ASB2
     B3 -->|backendRef| ASB3
-    
-    %% Direct Backend Relationships (standalone)
-    DASB1 -.->|direct FQDN| MS1
-    DASB2 -.->|direct FQDN| MS2
-    DASB3 -.->|direct FQDN| IS
     
     %% Security Policy Relationships
     SP -->|targetRefs| HR
@@ -196,7 +187,7 @@ graph TB
     classDef routing fill:#f3e5f5
     
     class GC,G,AGR gateway
-    class B1,B2,B3,B4,ASB1,ASB2,ASB3,DASB1,DASB2,DASB3 backend
+    class B1,B2,B3,B4,ASB1,ASB2,ASB3 backend
     class SP,BTP security
     class HR routing
 ```
@@ -414,23 +405,18 @@ graph LR
   - `remote-jwks`: JWT server JWKS endpoint
 - **Key Features**: FQDN-based service discovery
 
-#### `ai-service-backends.yaml` (Consolidated)
-- **Purpose**: Unified AI service backend configurations
+#### `ai-service-backends.yaml`
+- **Purpose**: AI Gateway service backend configurations
 - **Resources**: 
   - **AI Gateway Backends** (`aigateway.envoyproxy.io/v1alpha1`):
-    - Reference standard Backend resources
-    - Add OpenAI schema compatibility
-    - Unified AI service interface
-  - **Legacy Direct Backends** (`gateway.envoyproxy.io/v1alpha1`):
-    - Standalone AI backends with direct service configuration
-    - Configurable timeouts (60s for AI workloads)
-    - Retry mechanisms with exponential backoff
-    - Path prefix routing
+    - `sklearn-iris-backend`: References standard Backend with OpenAI schema
+    - `pytorch-resnet-backend`: References standard Backend with OpenAI schema
+    - `istio-gateway-backend`: References standard Backend with OpenAI schema
 - **Key Features**:
-  - Dual backend approach for flexibility
-  - OpenAI API compatibility
-  - Optimized timeouts for AI workloads
-  - Comprehensive retry policies
+  - OpenAI API compatibility layer
+  - Backend reference architecture
+  - Standardized AI service interface
+  - Schema validation for AI requests
 
 ### Routing Configuration (`routing/`)
 
@@ -512,7 +498,7 @@ Deploy configurations in the following order to ensure proper dependencies:
 2. **Backend Services**:
    ```bash
    kubectl apply -f backends/backends.yaml
-   kubectl apply -f backends/ai-service-backends.yaml  # Consolidated AI backends
+   kubectl apply -f backends/ai-service-backends.yaml
    ```
 
 3. **Security Policies** (KServe optimized):
