@@ -8,45 +8,67 @@ spec:
   - group: gateway.networking.k8s.io
     kind: Gateway
     name: ai-inference-gateway
+  llmRequestCosts:
+  - metadataKey: llm_input_token
+    type: InputToken
+  - metadataKey: llm_output_token
+    type: OutputToken
+  - metadataKey: llm_total_token
+    type: TotalToken
   rateLimit:
     type: Global
     global:
       rules:
-      # Token-based rate limiting per tenant and model
+      # Token-based rate limiting for sklearn-iris model
       - clientSelectors:
         - headers:
           - name: "x-tenant"
+            type: Exact
             value: "tenant-a"
-          - name: "x-model"
+          - name: "x-ai-eg-model"
+            type: Exact
             value: "sklearn-iris"
         limit:
-          requests: 100
-          unit: Minute
-        metadata:
-          key: "tenant-a-sklearn-iris"
-          value: "token-based-limit"
+          requests: 1000
+          unit: Hour
+        cost:
+          request:
+            from: Number
+            number: 0
+          response:
+            from: Metadata
+            metadata:
+              namespace: io.envoy.ai_gateway
+              key: llm_total_token
+      # Token-based rate limiting for pytorch-resnet model
       - clientSelectors:
         - headers:
           - name: "x-tenant"
-            value: "tenant-b"
-        limit:
-          requests: 100
-          unit: Minute
-        metadata:
-          key: "tenant-b-general"
-          value: "token-based-limit"
-      - clientSelectors:
-        - headers:
-          - name: "x-tenant"
+            type: Exact
             value: "tenant-c"
-          - name: "x-model"
+          - name: "x-ai-eg-model"
+            type: Exact
             value: "pytorch-resnet"
         limit:
+          requests: 1000
+          unit: Hour
+        cost:
+          request:
+            from: Number
+            number: 0
+          response:
+            from: Metadata
+            metadata:
+              namespace: io.envoy.ai_gateway
+              key: llm_total_token
+      # General tenant-based rate limiting
+      - clientSelectors:
+        - headers:
+          - name: "x-tenant"
+            type: Distinct
+        limit:
           requests: 100
           unit: Minute
-        metadata:
-          key: "tenant-c-pytorch-resnet"
-          value: "token-based-limit"
       # JWT-based rate limiting
       - clientSelectors:
         - headers:
@@ -56,16 +78,10 @@ spec:
         limit:
           requests: 500
           unit: Minute
-        metadata:
-          key: "jwt-authenticated-users"
-          value: "authenticated-limit"
-      # Global rate limiting with cost tracking
+      # Global rate limiting
       - limit:
-          requests: 1000
-          unit: Minute
-        metadata:
-          key: "global-limit"
-          value: "cost-0"
+          requests: 10000
+          unit: Hour
   circuitBreaker:
     maxConnections: 100
     maxPendingRequests: 50
@@ -88,9 +104,6 @@ spec:
     http:
       requestTimeout: 60s
       connectionIdleTimeout: 300s
-      requestHeaderTimeout: 10s
-      streamIdleTimeout: 30s
-      maxStreamDuration: 300s
   healthCheck:
     active:
       timeout: 1s

@@ -434,26 +434,29 @@ graph LR
 ### Policy Configuration (`policies/`)
 
 #### `rate-limiting.yaml`
-- **Purpose**: Traffic management and resilience policies
+- **Purpose**: AI Gateway usage-based rate limiting and traffic management
 - **Resources**: `ai-gateway-traffic-policy` BackendTrafficPolicy
 - **Key Features**:
-  - **Token-based Rate Limiting** (KServe optimized):
-    - Per-tenant + per-model: 100 requests/minute
+  - **AI Gateway Token Tracking**:
+    - Input token tracking (`llm_input_token`)
+    - Output token tracking (`llm_output_token`)
+    - Total token tracking (`llm_total_token`)
+  - **Usage-based Rate Limiting**:
+    - Per-model token limits: 1000 tokens/hour (sklearn-iris, pytorch-resnet)
+    - Request cost set to 0 (token-only tracking)
+    - Response cost from token metadata
+    - Per-tenant general limits: 100 requests/minute
     - JWT-authenticated users: 500 requests/minute
-    - Global with cost tracking: 1000 requests/minute
-    - Metadata tracking for token usage
+    - Global limit: 10000 requests/hour
   - **Circuit Breaker**:
     - Max connections: 100
     - Max pending requests: 50
     - Max parallel requests: 200
   - **Retry Policy**: 3 retries on 5xx errors
-  - **Optimized Timeouts** (KServe recommended):
+  - **Optimized Timeouts**:
     - TCP connect: 10s
-    - HTTP request: 60s (increased for AI workloads)
+    - HTTP request: 60s (AI workload optimized)
     - Connection idle: 300s (5 minutes)
-    - Request header timeout: 10s
-    - Stream idle timeout: 30s
-    - Max stream duration: 300s
   - **Health Checks**: Active health monitoring
 
 ### Observability Configuration (`observability/`)

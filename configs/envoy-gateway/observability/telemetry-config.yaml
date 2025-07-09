@@ -29,7 +29,9 @@ spec:
             %DURATION% %RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)% "%REQ(X-FORWARDED-FOR)%"
             "%REQ(USER-AGENT)%" "%REQ(X-REQUEST-ID)%" "%REQ(:AUTHORITY)%" "%UPSTREAM_HOST%"
             tenant="%REQ(X-TENANT)%" model="%REQ(X-MODEL)%" jwt_sub="%REQ(X-JWT-SUB)%"
-            tokens_in="%REQ(X-TOKENS-IN)%" tokens_out="%REQ(X-TOKENS-OUT)%"
+            tokens_in="%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_input_token)%" 
+            tokens_out="%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_output_token)%"
+            tokens_total="%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_total_token)%"
         sinks:
         - type: File
           file:
@@ -72,14 +74,20 @@ spec:
           tenant: "%REQ(X-TENANT)%"
           model: "%REQ(X-MODEL)%"
           direction: "in"
-        value: "%REQ(X-TOKENS-IN)%"
+        value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_input_token)%"
       - name: ai_model_tokens_generated
         type: counter
         tags:
           tenant: "%REQ(X-TENANT)%"
           model: "%REQ(X-MODEL)%"
           direction: "out"
-        value: "%REQ(X-TOKENS-OUT)%"
+        value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_output_token)%"
+      - name: ai_model_tokens_total
+        type: counter
+        tags:
+          tenant: "%REQ(X-TENANT)%"
+          model: "%REQ(X-MODEL)%"
+        value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_total_token)%"
 ---
 apiVersion: v1
 kind: ConfigMap
