@@ -606,9 +606,6 @@ main() {
     # Install KServe with Serverless support
     install_kserve
 
-    # Install observability stack
-    install_observability
-
     # Install Envoy Gateway and AI Gateway
     install_envoy_gateway
 
@@ -637,6 +634,10 @@ main() {
         # Only setup tenant namespaces in CI mode for minimal testing
         setup_multitenancy
     fi
+
+    # Install observability stack
+    install_observability
+
     
     log "Setup completed! Services available at:"
     log "📊 Grafana: http://localhost:3000 (admin/prom-operator)"
