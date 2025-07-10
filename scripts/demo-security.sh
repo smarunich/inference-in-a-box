@@ -15,6 +15,12 @@ CYAN='\033[0;36m'
 WHITE='\033[1;37m'
 NC='\033[0m' # No Color
 
+# Configuration
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+POLICY_FILE="${PROJECT_DIR}/configs/istio/authorization/tenant-isolation.yaml"
+POLICY_BACKUP_FILE="/tmp/tenant-isolation-backup-$(date +%s).yaml"
+
 # Professional logging functions
 log() {
     echo -e "${BLUE}[$(date +'%Y-%m-%d %H:%M:%S')] INFO: $1${NC}"
@@ -48,6 +54,93 @@ section_header() {
     echo -e "${WHITE}SECURITY DEMO: $1${NC}"
     separator
     echo ""
+}
+
+# Policy management functions
+backup_current_policies() {
+    log "Creating backup of current authorization policies"
+    
+    # Check if any policies exist
+    if kubectl get authorizationpolicy -n tenant-a tenant-a-isolation &>/dev/null || \
+       kubectl get authorizationpolicy -n tenant-b tenant-b-isolation &>/dev/null || \
+       kubectl get authorizationpolicy -n tenant-c tenant-c-isolation &>/dev/null; then
+        
+        info "Backing up existing policies to $POLICY_BACKUP_FILE"
+        {
+            kubectl get authorizationpolicy -n tenant-a tenant-a-isolation -o yaml 2>/dev/null || true
+            echo "---"
+            kubectl get authorizationpolicy -n tenant-b tenant-b-isolation -o yaml 2>/dev/null || true
+            echo "---"
+            kubectl get authorizationpolicy -n tenant-c tenant-c-isolation -o yaml 2>/dev/null || true
+        } > "$POLICY_BACKUP_FILE"
+        
+        success "Current policies backed up successfully"
+    else
+        info "No existing authorization policies found to backup"
+        touch "$POLICY_BACKUP_FILE"
+    fi
+}
+
+apply_jwt_policies() {
+    log "Applying JWT-based authorization policies"
+    
+    if [ ! -f "$POLICY_FILE" ]; then
+        error "Policy file not found: $POLICY_FILE"
+        return 1
+    fi
+    
+    info "Applying policies from: $POLICY_FILE"
+    if kubectl apply -f "$POLICY_FILE"; then
+        success "JWT-based authorization policies applied successfully"
+        
+        # Wait for policies to be ready
+        log "Waiting for policies to be active..."
+        sleep 5
+        
+        # Verify policies are applied
+        info "Verifying policy application..."
+        kubectl get authorizationpolicy -n tenant-a tenant-a-isolation &>/dev/null && \
+        kubectl get authorizationpolicy -n tenant-b tenant-b-isolation &>/dev/null && \
+        kubectl get authorizationpolicy -n tenant-c tenant-c-isolation &>/dev/null
+        
+        if [ $? -eq 0 ]; then
+            success "All authorization policies are active"
+            return 0
+        else
+            error "Some policies failed to apply properly"
+            return 1
+        fi
+    else
+        error "Failed to apply authorization policies"
+        return 1
+    fi
+}
+
+rollback_policies() {
+    log "Rolling back authorization policies"
+    
+    # Delete current policies
+    info "Removing JWT-based authorization policies..."
+    kubectl delete authorizationpolicy -n tenant-a tenant-a-isolation --ignore-not-found=true
+    kubectl delete authorizationpolicy -n tenant-b tenant-b-isolation --ignore-not-found=true
+    kubectl delete authorizationpolicy -n tenant-c tenant-c-isolation --ignore-not-found=true
+    
+    # Apply backup if it exists and has content
+    if [ -f "$POLICY_BACKUP_FILE" ] && [ -s "$POLICY_BACKUP_FILE" ]; then
+        info "Restoring previous policies from backup..."
+        if kubectl apply -f "$POLICY_BACKUP_FILE"; then
+            success "Previous policies restored successfully"
+        else
+            warn "Failed to restore previous policies, but JWT policies have been removed"
+        fi
+    else
+        info "No previous policies to restore"
+    fi
+    
+    # Clean up backup file
+    rm -f "$POLICY_BACKUP_FILE" 2>/dev/null || true
+    
+    success "Policy rollback completed"
 }
 
 
@@ -153,6 +246,27 @@ demo_security() {
     echo -e "${WHITE}  - Test zero-trust networking principles${NC}"
     echo -e "${WHITE}  - Confirm cross-tenant access prevention${NC}"
     echo ""
+    
+    # Apply JWT-based authorization policies
+    section_header "AUTHORIZATION POLICY DEPLOYMENT"
+    
+    echo -e "${CYAN}Press Enter to backup current policies and apply JWT-based authorization...${NC}"
+    read
+    
+    backup_current_policies
+    if [ $? -ne 0 ]; then
+        error "Failed to backup current policies"
+        return 1
+    fi
+    
+    apply_jwt_policies
+    if [ $? -ne 0 ]; then
+        error "Failed to apply JWT policies - terminating demo"
+        return 1
+    fi
+    
+    echo -e "${CYAN}Press Enter to continue with JWT token acquisition...${NC}"
+    read
     
     # Get JWT tokens from server
     section_header "JWT TOKEN ACQUISITION"
@@ -344,6 +458,20 @@ demo_security() {
     echo ""
     
     success "Security validation completed - all tests passed"
+    
+    # Policy rollback section
+    section_header "AUTHORIZATION POLICY ROLLBACK"
+    
+    echo -e "${CYAN}Press Enter to rollback JWT-based authorization policies...${NC}"
+    read
+    
+    rollback_policies
+    if [ $? -eq 0 ]; then
+        success "Authorization policies have been rolled back successfully"
+        info "System has been restored to its original state"
+    else
+        warn "Policy rollback encountered issues - manual cleanup may be required"
+    fi
 }
 
 # Run the demo
