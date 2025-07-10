@@ -31,366 +31,39 @@ warn() {
     echo -e "${YELLOW}[$(date +'%Y-%m-%d %H:%M:%S')] ⚠ $1${NC}"
 }
 
-# Helper function to get AI Gateway service name dynamically
-get_ai_gateway_service() {
-    kubectl get svc -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=ai-inference-gateway -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "envoy-ai-gateway"
-}
+# Make individual demo scripts executable
+chmod +x ${SCRIPT_DIR}/demo-*.sh
 
-# Helper function to get JWT tokens from server
-get_jwt_tokens() {
-    # Check if JWT server is available
-    if ! kubectl get svc jwt-server -n default &>/dev/null; then
-        error "JWT server not found. Please ensure the platform is properly bootstrapped."
-        return 1
-    fi
-    
-    # Port-forward to JWT server in background
-    kubectl port-forward -n default svc/jwt-server 8081:8080 >/dev/null 2>&1 &
-    local jwt_pf=$!
-    sleep 2
-    
-    # Get tokens from server
-    local tokens=$(curl -s http://localhost:8081/tokens 2>/dev/null)
-    
-    # Clean up port-forward
-    kill $jwt_pf 2>/dev/null || true
-    
-    if [ -z "$tokens" ]; then
-        error "Failed to retrieve JWT tokens from server"
-        return 1
-    fi
-    
-    echo "$tokens"
-}
-
-# Demo Functions
+# Demo Functions - now call separate scripts
 
 # Demo 1: Security & Authentication
 demo_security() {
     log "Running Security & Authentication Demo"
-    
-    # Get JWT tokens from server dynamically
-    log "Retrieving JWT tokens from server..."
-    local jwt_response=$(get_jwt_tokens)
-    if [ $? -ne 0 ]; then
-        error "Failed to retrieve JWT tokens"
-        return 1
-    fi
-    
-    # Extract tokens using jq
-    TOKEN_USER_A=$(echo "$jwt_response" | jq -r '.["tenant-a"]' 2>/dev/null)
-    TOKEN_USER_B=$(echo "$jwt_response" | jq -r '.["tenant-b"]' 2>/dev/null)
-    
-    if [ -z "$TOKEN_USER_A" ] || [ "$TOKEN_USER_A" = "null" ]; then
-        error "Failed to extract tenant-a token"
-        return 1
-    fi
-    
-    if [ -z "$TOKEN_USER_B" ] || [ "$TOKEN_USER_B" = "null" ]; then
-        error "Failed to extract tenant-b token"
-        return 1
-    fi
-    
-    # Show JWT token contents
-    log "JWT Token for Tenant A User:"
-    echo $TOKEN_USER_A | cut -d "." -f2 | base64 -d 2>/dev/null | jq . 2>/dev/null || echo "JWT: {\"sub\":\"user-a\",\"name\":\"Tenant A User\",\"tenant\":\"tenant-a\"}"
-    
-    log "JWT Token for Tenant B User:"
-    echo $TOKEN_USER_B | cut -d "." -f2 | base64 -d 2>/dev/null | jq . 2>/dev/null || echo "JWT: {\"sub\":\"user-b\",\"name\":\"Tenant B User\",\"tenant\":\"tenant-b\"}"
-    
-    # Start port-forward for AI gateway (now the front gateway)
-    log "Starting port-forward for Envoy AI Gateway..."
-    AI_GATEWAY_SERVICE=$(get_ai_gateway_service)
-    kubectl port-forward -n envoy-gateway-system svc/$AI_GATEWAY_SERVICE 8080:80 &
-    GATEWAY_PF=$!
-    sleep 3
-    
-    # Make authorized request to tenant A model
-    log "Making authorized request to Tenant A model with correct token"
-    curl -X POST -s -H "Authorization: Bearer $TOKEN_USER_A" -H "Content-Type: application/json" \
-        http://sklearn-iris-predictor.tenant-a.127.0.0.1.sslip.io:8080/v1/models/sklearn-iris:predict \
-        -d '{"instances": [[5.1, 3.5, 1.4, 0.2]]}' | jq . 2>/dev/null || echo "Request completed"
-    
-    # Make unauthorized request to tenant C model with tenant A token  
-    log "Making unauthorized request to Tenant C model"
-    curl -X POST -s -H "Content-Type: application/json" \
-        http://pytorch-resnet-predictor.tenant-c.127.0.0.1.sslip.io:8080/v1/models/mnist:predict \
--d '{"instances": [{"data": "iVBORw0KGgoAAAANSUhEUgAAABwAAAAcCAAAAABXZoBIAAAAw0lEQVR4nGNgGFggVVj4/y8Q2GOR83n+58/fP0DwcSqmpNN7oOTJw6f+/H2pjUU2JCSEk0EWqN0cl828e/FIxvz9/9cCh1zS5z9/G9mwyzl/+PNnKQ45nyNAr9ThMHQ/UG4tDofuB4bQIhz6fIBenMWJQ+7Vn7+zeLCbKXv6z59NOPQVgsIcW4QA9YFi6wNQLrKwsBebW/68DJ388Nun5XFocrqvIFH59+XhBAxThTfeB0r+vP/QHbuDCgr2JmOXoSsAAKK7bU3vISS4AAAAAElFTkSuQmCC"}]}' | jq . 2>/dev/null || echo "Request failed as expected"
-    
-    # Clean up port-forward
-    kill $GATEWAY_PF 2>/dev/null || true
-    
-    success "Security & Authentication Demo completed"
+    ${SCRIPT_DIR}/demo-security.sh
 }
 
 # Demo 2: Auto-scaling
 demo_autoscaling() {
     log "Running Auto-scaling Demo"
-    
-    # Monitor pods before load
-    log "Current pods before load:"
-    kubectl get pods -n tenant-a -l serving.kserve.io/inferenceservice=sklearn-iris
-    
-    # Start port-forward for AI gateway (now the front gateway)
-    log "Starting port-forward for Envoy AI Gateway..."
-    AI_GATEWAY_SERVICE=$(get_ai_gateway_service)
-    kubectl port-forward -n envoy-gateway-system svc/$AI_GATEWAY_SERVICE 8080:80 &
-    GATEWAY_PF=$!
-    sleep 3
-    
-    # Generate load in background
-    log "Generating load to trigger auto-scaling for 60 seconds..."
-    
-    # Get JWT token from server dynamically
-    log "Retrieving JWT token from server..."
-    local jwt_response=$(get_jwt_tokens)
-    if [ $? -ne 0 ]; then
-        error "Failed to retrieve JWT tokens"
-        return 1
-    fi
-    
-    # Extract tenant-a token using jq
-    TOKEN=$(echo "$jwt_response" | jq -r '.["tenant-a"]' 2>/dev/null)
-    
-    if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
-        error "Failed to extract tenant-a token"
-        return 1
-    fi
-    
-    # Run load in background for 60 seconds
-    
-    # Use background process for load generation
-    for i in {1..600}; do
-        curl -s -H "Authorization: Bearer $TOKEN" \
-                http://localhost:8080/v1/models/sklearn-iris:predict \
-            -d '{"instances": [[5.1, 3.5, 1.4, 0.2]]}' > /dev/null &
-        sleep 0.1
-    done &
-    LOAD_PID=$!
-    
-    # Monitor pods during scaling events
-    log "Monitoring pod scaling (press Ctrl+C to stop):"
-    echo "Waiting 10 seconds for scaling to begin..."
-    sleep 10
-    kubectl get pods -n tenant-a -l serving.kserve.io/inferenceservice=sklearn-iris
-    sleep 10
-    log "After 20 seconds:"
-    kubectl get pods -n tenant-a -l serving.kserve.io/inferenceservice=sklearn-iris
-    sleep 10
-    log "After 30 seconds:"
-    kubectl get pods -n tenant-a -l serving.kserve.io/inferenceservice=sklearn-iris
-    
-    # Wait for load generation to complete
-    wait $LOAD_PID || true
-    
-    log "Load generation completed, waiting for scale down..."
-    sleep 30
-    log "Pod status after load removed (should be scaling down):"
-    kubectl get pods -n tenant-a -l serving.kserve.io/inferenceservice=sklearn-iris
-    
-    # Clean up port-forward
-    kill $GATEWAY_PF 2>/dev/null || true
-    
-    success "Auto-scaling Demo completed"
+    ${SCRIPT_DIR}/demo-autoscaling.sh
 }
 
 # Demo 3: Canary Deployment
 demo_canary() {
     log "Running Canary Deployment Demo"
-    
-    # Check if the demo model exists
-    if ! kubectl get inferenceservice sklearn-iris -n tenant-a &>/dev/null; then
-        error "sklearn-iris model not found in tenant-a namespace"
-        return 1
-    fi
-    
-    # Create canary version of the model (v2)
-    log "Creating canary version (v2) of sklearn-iris model with 10% traffic"
-    kubectl apply -f ${PROJECT_DIR}/examples/traffic-scenarios/sklearn-iris-canary.yaml
-    
-    # Wait for the canary deployment to be ready
-    log "Waiting for canary deployment to be ready..."
-    kubectl wait --for=condition=Ready inferenceservice sklearn-iris-v2 -n tenant-a --timeout=300s || warn "Canary deployment may still be starting up"
-    
-    # Show virtual service configuration
-    log "VirtualService traffic split configuration:"
-    kubectl get virtualservice -n tenant-a -l serving.kserve.io/inferenceservice=sklearn-iris -o yaml | grep -A10 "weight" || echo "VirtualService created"
-    
-    # Make requests to demonstrate traffic splitting
-    log "Making 10 requests to show traffic splitting between main and canary:"
-    
-    # Get JWT token from server dynamically
-    log "Retrieving JWT token from server..."
-    local jwt_response=$(get_jwt_tokens)
-    if [ $? -ne 0 ]; then
-        error "Failed to retrieve JWT tokens"
-        return 1
-    fi
-    
-    # Extract tenant-a token using jq
-    TOKEN=$(echo "$jwt_response" | jq -r '.["tenant-a"]' 2>/dev/null)
-    
-    if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
-        error "Failed to extract tenant-a token"
-        return 1
-    fi
-    
-    # First ensure the AI gateway is port-forwarded
-    AI_GATEWAY_SERVICE=$(get_ai_gateway_service)
-    kubectl port-forward -n envoy-gateway-system svc/$AI_GATEWAY_SERVICE 8080:80 &
-    GATEWAY_PF=$!
-    sleep 3
-    
-    for i in {1..10}; do
-        echo -n "Request $i: "
-        RESPONSE=$(curl -s -H "Authorization: Bearer $TOKEN" \
-                http://localhost:8080/v1/models/sklearn-iris:predict \
-            -d '{"instances": [[5.1, 3.5, 1.4, 0.2]]}' || echo "Request failed")
-        echo "$RESPONSE" | jq -r '.predictions[0] // "No prediction"' 2>/dev/null || echo "Response: $RESPONSE"
-        sleep 1
-    done
-    
-    # Clean up gateway port-forward
-    kill $GATEWAY_PF 2>/dev/null || true
-    
-    # Clean up canary if desired
-    log "Canary deployment complete. To clean up canary:"
-    echo "kubectl delete -f \${PROJECT_DIR}/examples/traffic-scenarios/sklearn-iris-canary.yaml"
-    
-    # Offer to clean up canary deployment
-    echo ""
-    read -p "Would you like to clean up the canary deployment? (y/n): " cleanup
-    if [[ $cleanup == "y" ]]; then
-        kubectl delete -f ${PROJECT_DIR}/examples/traffic-scenarios/sklearn-iris-canary.yaml || true
-        log "Canary deployment cleaned up"
-    fi
-    
-    success "Canary Deployment Demo completed"
+    ${SCRIPT_DIR}/demo-canary.sh
 }
 
 # Demo 4: Multi-tenant Isolation
 demo_multitenancy() {
     log "Running Multi-tenant Isolation Demo"
-    
-    # Show namespaces and their labels
-    log "Tenant namespaces and their labels:"
-    kubectl get namespaces --show-labels | grep tenant-
-    
-    # Show network policies for isolation
-    log "Network policies ensuring tenant isolation:"
-    kubectl get networkpolicy --all-namespaces || echo "No network policies currently configured"
-    
-    # Show resource quotas for multi-tenancy
-    log "Resource quotas for each tenant:"
-    kubectl get resourcequota --all-namespaces || echo "No resource quotas currently configured"
-    
-    # Show Istio policies for isolation
-    log "Istio Authorization Policies for tenant isolation:"
-    kubectl get authorizationpolicy --all-namespaces || echo "No authorization policies currently configured"
-    
-    # Show service accounts per tenant
-    log "Service accounts per tenant:"
-    for tenant in tenant-a tenant-b tenant-c; do
-        echo "--- $tenant ---"
-        kubectl get serviceaccount -n $tenant
-    done
-    
-    # Show models deployed in each tenant
-    log "Models deployed in Tenant A:"
-    kubectl get inferenceservice -n tenant-a
-    
-    log "Models deployed in Tenant B:"
-    kubectl get inferenceservice -n tenant-b
-    
-    log "Models deployed in Tenant C:"
-    kubectl get inferenceservice -n tenant-c
-    
-    success "Multi-tenant Isolation Demo completed"
+    ${SCRIPT_DIR}/demo-multitenancy.sh
 }
 
 # Demo 5: Observability
 demo_observability() {
     log "Running Observability Demo"
-    
-    # Start port-forwarding for observability tools in background
-    log "Starting port-forwarding for observability tools..."
-    
-    # Stop any existing port-forwards
-    pkill -f "port-forward" || true
-    sleep 2
-    
-    # Start new port-forwards with correct service names and namespaces
-    kubectl port-forward -n monitoring svc/prometheus-grafana 3000:80 &
-    PF1=$!
-    kubectl port-forward -n monitoring svc/prometheus-kube-prometheus-prometheus 9090:9090 &
-    PF2=$!
-    kubectl port-forward -n monitoring svc/kiali 20001:20001 &
-    PF3=$!
-    
-    # Note: Jaeger not deployed in current setup
-    log "Note: Jaeger tracing not currently deployed in this setup"
-    
-    # Wait for port-forwards to establish
-    sleep 3
-    
-    # Start gateway port-forward for traffic generation
-    AI_GATEWAY_SERVICE=$(get_ai_gateway_service)
-    kubectl port-forward -n envoy-gateway-system svc/$AI_GATEWAY_SERVICE 8080:80 &
-    GATEWAY_PF=$!
-    sleep 2
-    
-    # Generate some traffic for metrics/traces
-    log "Generating sample traffic for metrics and traces..."
-    
-    # Get JWT tokens from server dynamically
-    log "Retrieving JWT tokens from server..."
-    local jwt_response=$(get_jwt_tokens)
-    if [ $? -ne 0 ]; then
-        error "Failed to retrieve JWT tokens"
-        return 1
-    fi
-    
-    # Extract tokens using jq
-    TOKEN_A=$(echo "$jwt_response" | jq -r '.["tenant-a"]' 2>/dev/null)
-    TOKEN_C=$(echo "$jwt_response" | jq -r '.["tenant-c"]' 2>/dev/null)
-    
-    if [ -z "$TOKEN_A" ] || [ "$TOKEN_A" = "null" ]; then
-        error "Failed to extract tenant-a token"
-        return 1
-    fi
-    
-    if [ -z "$TOKEN_C" ] || [ "$TOKEN_C" = "null" ]; then
-        error "Failed to extract tenant-c token"
-        return 1
-    fi
-    
-    for i in {1..10}; do
-        curl -s -H "Authorization: Bearer $TOKEN_A" \
-                http://localhost:8080/v1/models/sklearn-iris:predict \
-            -d '{"instances": [[5.1, 3.5, 1.4, 0.2]]}' > /dev/null
-        curl -s -H "Authorization: Bearer $TOKEN_C" \
-                http://localhost:8080/v1/models/pytorch-resnet:predict \
-            -d '{"instances": [[[0.1, 0.2, 0.3]]]}' > /dev/null || true
-        sleep 0.5
-    done
-    
-    # Show access URLs
-    log "📊 Observability tools are now accessible at:"
-    echo "Grafana: http://localhost:3000 (admin/prom-operator)"
-    echo "Prometheus: http://localhost:9090"
-    echo "Kiali: http://localhost:20001"
-    echo "Note: Jaeger not deployed in current setup"
-    
-    # Recommended dashboards
-    log "Recommended Grafana dashboards to explore:"
-    echo "- KServe Model Performance"
-    echo "- Istio Service Dashboard"
-    echo "- Istio Workload Dashboard"
-    
-    log "Press Ctrl+C when done exploring observability tools"
-    
-    # Wait for user to finish exploring
-    wait $PF1 $PF2 $PF3 $GATEWAY_PF
+    ${SCRIPT_DIR}/demo-observability.sh
 }
 
 # Main menu

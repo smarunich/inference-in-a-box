@@ -138,7 +138,8 @@ Before running the demos, ensure:
 ### AI Gateway Access
 - **Envoy AI Gateway**: `http://localhost:8080` (via Istio Gateway port-forward)
 - **JWT Server**: `http://localhost:8081` (for token retrieval)
-- **JWT Tokens**: Use `./scripts/get-jwt-tokens.sh` to retrieve authentication tokens
+- **Model Endpoints**: Use hostname-based routing (e.g., `http://sklearn-iris-predictor.tenant-a.127.0.0.1.sslip.io:8080`)
+- **JWT Tokens**: Dynamically retrieved from server during demos
 
 ### Deployed Models
 - **sklearn-iris** (tenant-a): Iris classification model
@@ -247,18 +248,27 @@ kubectl get svc -n monitoring
 
 # Test model access
 curl -H "Authorization: Bearer TOKEN" \
-  http://localhost:8080/v2/models/sklearn-iris/infer \
+  http://sklearn-iris-predictor.tenant-a.127.0.0.1.sslip.io:8080/v1/models/sklearn-iris:predict \
   -d '{"instances": [[5.1, 3.5, 1.4, 0.2]]}'
 ```
 
 ## 🎬 Demo Script Architecture
 
-The demo script (`scripts/demo.sh`) provides:
-- **Modular design** with separate functions for each demo
+The demo system is now split into separate files for better maintainability:
+- **`scripts/demo.sh`** - Main entry point with interactive menu
+- **`scripts/demo-security.sh`** - Security & authentication demo
+- **`scripts/demo-autoscaling.sh`** - Auto-scaling demo
+- **`scripts/demo-canary.sh`** - Canary deployment demo
+- **`scripts/demo-multitenancy.sh`** - Multi-tenant isolation demo
+- **`scripts/demo-observability.sh`** - Observability demo
+
+### Key Features:
+- **Modular design** with separate scripts for each demo
 - **Interactive menu system** for user-friendly navigation
 - **Automated cleanup** to prevent resource conflicts
 - **Comprehensive logging** for debugging and monitoring
 - **Error handling** with graceful fallbacks
+- **Correct URL patterns** using hostname-based routing
 
 ## 📖 Related Documentation
 
@@ -270,10 +280,33 @@ The demo script (`scripts/demo.sh`) provides:
 ## 🤝 Contributing
 
 To add new demo scenarios:
-1. Create a new `demo_*()` function in `scripts/demo.sh`
-2. Add menu option in the `main()` function
-3. Update this documentation
-4. Test thoroughly across different environments
+1. Create a new `scripts/demo-<name>.sh` file following the existing patterns
+2. Add a new function in `scripts/demo.sh` that calls your script
+3. Add menu option in the `main()` function
+4. Update this documentation
+5. Test thoroughly across different environments
+
+### Demo Script Template:
+```bash
+#!/bin/bash
+# <Demo Name> Demo
+# Description of what this demo shows
+
+set -e
+
+# Include common functions and logging
+# ... (see existing demo scripts for patterns)
+
+# Main demo function
+demo_<name>() {
+    log "Running <Demo Name> Demo"
+    # Your demo logic here
+    success "<Demo Name> Demo completed"
+}
+
+# Run the demo
+demo_<name>
+```
 
 ## 🏁 Conclusion
 
