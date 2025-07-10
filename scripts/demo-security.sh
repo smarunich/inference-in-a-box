@@ -186,6 +186,9 @@ demo_security() {
     echo $TOKEN_USER_B | cut -d "." -f2 | base64 -d 2>/dev/null | jq . 2>/dev/null || echo "JWT: {\"sub\":\"user-b\",\"name\":\"Tenant B User\",\"tenant\":\"tenant-b\"}"
     echo ""
     
+    echo -e "${CYAN}Press Enter to continue with gateway connection setup...${NC}"
+    read
+    
     # Start port-forward for AI gateway (now the front gateway)
     section_header "AI GATEWAY CONNECTION"
     log "Starting port-forward for Envoy AI Gateway..."
@@ -193,6 +196,13 @@ demo_security() {
     kubectl port-forward -n envoy-gateway-system svc/$AI_GATEWAY_SERVICE 8080:80 &
     GATEWAY_PF=$!
     sleep 3
+    
+    success "AI Gateway connection established successfully"
+    info "Gateway accessible at http://localhost:8080"
+    echo ""
+    
+    echo -e "${CYAN}Press Enter to begin security validation tests...${NC}"
+    read
     
     # Test 1: Authorized request to tenant A model
     section_header "TEST 1: AUTHORIZED ACCESS VALIDATION"
@@ -230,6 +240,9 @@ demo_security() {
     fi
     echo ""
     
+    echo -e "${CYAN}Press Enter to continue with unauthorized access test...${NC}"
+    read
+    
     # Test 2: Unauthorized cross-tenant request
     section_header "TEST 2: CROSS-TENANT ACCESS PREVENTION"
     log "Making unauthorized request to Tenant C model (no authentication)"
@@ -249,6 +262,9 @@ demo_security() {
     curl -X POST -s -H "Content-Type: application/json" \
         http://pytorch-resnet-predictor.tenant-c.127.0.0.1.sslip.io:8080/v1/models/mnist:predict \
         -d '{"instances": [{"data": "iVBORw0KGgoAAAANSUhEUgAAABwAAAAcCAAAAABXZoBIAAAAw0lEQVR4nGNgGFggVVj4/y8Q2GOR83n+58/fP0DwcSqmpNN7oOTJw6f+/P2pjUU2JCSEk0EWqN0cl828e/FIxvz9/9cCh1zS5z9/G9mwyzl/+PNnKQ45nyNAr9ThMHQ/UG4tDofuB4bQIhz6fIBenMWJQ+7Vn7+zeLCbKXv6z59NOPQVgsIcW4QA9YFi6wNQLrKwsBebW/68DJ388Nun5XFocrqvIFH59+XhBAxThTfeB0r+vP/QHbuDCgr2JmOXoSsAAKK7bU3vISS4AAAAAElFTkSuQmCC"}]}' | jq . 2>/dev/null || echo "Request failed as expected"
+    
+    echo -e "${CYAN}Press Enter to continue with cross-tenant access test...${NC}"
+    read
     
     # Test 3: Cross-tenant access with wrong token
     section_header "TEST 3: TENANT MISMATCH VALIDATION"
@@ -293,6 +309,9 @@ demo_security() {
         echo "$response_body" | jq . 2>/dev/null || echo "$response_body"
     fi
     echo ""
+    
+    echo -e "${CYAN}Press Enter to view security validation summary...${NC}"
+    read
     
     # Clean up port-forward
     log "Cleaning up port-forward connection"

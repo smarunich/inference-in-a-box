@@ -6,15 +6,12 @@ metadata:
 spec:
   action: ALLOW
   rules:
-  - from:
-    - source:
-        namespaces: ["istio-system", "envoy-ai-gateway"]
-    to:
+  - to:
     - operation:
         methods: ["GET", "POST"]
-  - from:
-    - source:
-        principals: ["cluster.local/ns/tenant-a/sa/default"]
+    when:
+    - key: request.headers[x-jwt-tenant]
+      values: ["tenant-a"]
 ---
 apiVersion: security.istio.io/v1beta1
 kind: AuthorizationPolicy
@@ -24,15 +21,12 @@ metadata:
 spec:
   action: ALLOW
   rules:
-  - from:
-    - source:
-        namespaces: ["istio-system", "envoy-ai-gateway"]
-    to:
+  - to:
     - operation:
         methods: ["GET", "POST"]
-  - from:
-    - source:
-        principals: ["cluster.local/ns/tenant-b/sa/default"]
+    when:
+    - key: request.headers[x-jwt-tenant]
+      values: ["tenant-b"]
 ---
 apiVersion: security.istio.io/v1beta1
 kind: AuthorizationPolicy
@@ -42,12 +36,9 @@ metadata:
 spec:
   action: ALLOW
   rules:
-  - from:
-    - source:
-        namespaces: ["istio-system", "envoy-ai-gateway"]
-    to:
+  - to:
     - operation:
         methods: ["GET", "POST"]
-  - from:
-    - source:
-        principals: ["cluster.local/ns/tenant-c/sa/default"]
+    when:
+    - key: request.headers[x-jwt-tenant]
+      values: ["tenant-c"]

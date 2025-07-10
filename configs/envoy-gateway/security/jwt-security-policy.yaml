@@ -12,6 +12,11 @@ spec:
     providers:
     - name: inference-in-a-box
       issuer: "inference-in-a-box"
+      claimToHeaders:
+      - header: x-jwt-sub
+        claim: sub
+      - header: x-jwt-tenant
+        claim: tenant
       remoteJWKS:
         backendRefs:
           - group: gateway.envoyproxy.io
