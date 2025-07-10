@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Build and push Docker images for Management API and UI
-# This script builds both containers and pushes them to Google Artifact Registry
+# Build multi-architecture Docker images for Management API and UI
+# This script builds both containers for AMD64 and ARM64 and pushes them to Google Artifact Registry
 
 set -e
 
@@ -56,7 +56,7 @@ check_docker() {
     # Create/use buildx builder for multi-arch
     if ! docker buildx ls | grep -q "multi-arch-builder"; then
         print_step "Creating multi-arch builder"
-        docker buildx create --name multi-arch-builder --use
+        docker buildx create --name multi-arch-builder --driver docker-container --use
         docker buildx inspect --bootstrap
     else
         print_step "Using existing multi-arch builder"
@@ -108,35 +108,6 @@ build_management_ui() {
     print_success "Management UI multi-arch image built and pushed"
 }
 
-# Push images to registry (already done in buildx)
-push_images() {
-    print_step "Images already pushed during multi-arch build"
-    print_success "Multi-arch images are available in registry"
-}
-
-# Update Kubernetes manifests with new image references
-update_manifests() {
-    print_step "Updating Kubernetes manifests"
-    
-    # Update Management API deployment
-    sed -i.bak "s|image: node:18-alpine|image: $REGISTRY/management-api:$TAG|g" \
-        "$PROJECT_ROOT/configs/management-api/management-api.yaml"
-    
-    # Remove the complex command and args since they're now in the image
-    sed -i.bak '/command: \[\"\/bin\/sh\"\]/,/cd \/app && node server.js/d' \
-        "$PROJECT_ROOT/configs/management-api/management-api.yaml"
-    
-    # Update Management UI deployment
-    sed -i.bak "s|image: nginx:alpine|image: $REGISTRY/management-ui:$TAG|g" \
-        "$PROJECT_ROOT/configs/management-ui/management-ui.yaml"
-    
-    # Remove the initContainer since the image is now pre-built
-    sed -i.bak '/initContainers:/,/name: ui-build-shared/d' \
-        "$PROJECT_ROOT/configs/management-ui/management-ui.yaml"
-    
-    print_success "Kubernetes manifests updated"
-}
-
 # Show image information
 show_image_info() {
     print_step "Image Information"
@@ -158,18 +129,16 @@ show_image_info() {
 
 # Main execution
 main() {
-    echo -e "${BLUE}Build and Push Docker Images${NC}"
-    echo -e "${BLUE}============================${NC}"
+    echo -e "${BLUE}Build Multi-Architecture Docker Images${NC}"
+    echo -e "${BLUE}=====================================${NC}"
     
     check_docker
     configure_docker
     build_management_api
     build_management_ui
-    push_images
-    update_manifests
     show_image_info
     
-    print_success "Docker images built and pushed successfully!"
+    print_success "Multi-arch Docker images built and pushed successfully!"
 }
 
 # Handle script interruption

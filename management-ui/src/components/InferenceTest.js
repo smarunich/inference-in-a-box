@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useApi } from '../contexts/ApiContext';
 import toast from 'react-hot-toast';
-import ReactJsonView from 'react-json-view';
+import JsonView from '@uiw/react-json-view';
 import { Play, Copy } from 'lucide-react';
 
 const InferenceTest = () => {
@@ -232,13 +232,9 @@ const InferenceTest = () => {
                 padding: '1rem',
                 backgroundColor: '#f8fafc'
               }}>
-                <ReactJsonView
-                  src={response}
-                  theme="rjv-default"
+                <JsonView
+                  value={response}
                   collapsed={false}
-                  displayDataTypes={false}
-                  displayObjectSize={false}
-                  enableClipboard={false}
                   style={{ fontSize: '0.875rem' }}
                 />
               </div>
@@ -250,10 +246,10 @@ const InferenceTest = () => {
               Common Input Formats:
             </h3>
             <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
-              <p><strong>Sklearn/XGBoost:</strong> <code>{"instances": [[1, 2, 3, 4]]}</code></p>
-              <p><strong>TensorFlow:</strong> <code>{"instances": [{"input": [1, 2, 3, 4]}]}</code></p>
-              <p><strong>PyTorch:</strong> <code>{"instances": [{"data": [1, 2, 3, 4]}]}</code></p>
-              <p><strong>Images:</strong> <code>{"instances": [{"b64": "base64-encoded-image"}]}</code></p>
+              <p><strong>Sklearn/XGBoost:</strong> <code>{`{"instances": [[1, 2, 3, 4]]}`}</code></p>
+              <p><strong>TensorFlow:</strong> <code>{`{"instances": [{"input": [1, 2, 3, 4]}]}`}</code></p>
+              <p><strong>PyTorch:</strong> <code>{`{"instances": [{"data": [1, 2, 3, 4]}]}`}</code></p>
+              <p><strong>Images:</strong> <code>{`{"instances": [{"b64": "base64-encoded-image"}]}`}</code></p>
             </div>
           </div>
         </>
