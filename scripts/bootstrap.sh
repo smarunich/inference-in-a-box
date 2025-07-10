@@ -409,14 +409,6 @@ deploy_auth_services() {
     log "Waiting for JWT server to be ready..."
     kubectl wait --timeout=120s -n default deployment/jwt-server --for=condition=Available
     
-    # Deploy default backend
-    log "Deploying default backend service..."
-    kubectl apply -f ${PROJECT_DIR}/configs/istio/default-backend.yaml
-    
-    # Wait for default backend to be ready
-    log "Waiting for default backend to be ready..."
-    kubectl wait --timeout=120s -n default deployment/default-backend --for=condition=Available
-    
     # Verify JWT server is responding
     log "Verifying JWT server connectivity..."
     kubectl run jwt-test --image=curlimages/curl --rm -i --restart=Never -- \
