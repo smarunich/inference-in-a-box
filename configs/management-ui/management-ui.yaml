@@ -1,0 +1,221 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: management-ui
+  namespace: default
+  labels:
+    app: management-ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: management-ui
+  template:
+    metadata:
+      labels:
+        app: management-ui
+    spec:
+      containers:
+      - name: management-ui
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: ui-build
+          mountPath: /usr/share/nginx/html
+        - name: nginx-config
+          mountPath: /etc/nginx/nginx.conf
+          subPath: nginx.conf
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+      volumes:
+      - name: ui-build
+        configMap:
+          name: management-ui-build
+      - name: nginx-config
+        configMap:
+          name: management-ui-nginx
+      initContainers:
+      - name: ui-builder
+        image: node:18-alpine
+        command: ["/bin/sh"]
+        args:
+        - -c
+        - |
+          cd /app
+          npm ci --only=production
+          npm run build
+          cp -r build/* /shared/
+        volumeMounts:
+        - name: ui-source
+          mountPath: /app
+        - name: ui-build-shared
+          mountPath: /shared
+        env:
+        - name: REACT_APP_API_URL
+          value: "/api"
+        - name: GENERATE_SOURCEMAP
+          value: "false"
+      volumes:
+      - name: ui-source
+        configMap:
+          name: management-ui-source
+      - name: ui-build-shared
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: management-ui
+  namespace: default
+  labels:
+    app: management-ui
+spec:
+  selector:
+    app: management-ui
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+    protocol: TCP
+  type: ClusterIP
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: management-ui-nginx
+  namespace: default
+data:
+  nginx.conf: |
+    events {
+        worker_connections 1024;
+    }
+
+    http {
+        include /etc/nginx/mime.types;
+        default_type application/octet-stream;
+
+        # Logging
+        access_log /var/log/nginx/access.log;
+        error_log /var/log/nginx/error.log;
+
+        # Basic settings
+        sendfile on;
+        tcp_nopush on;
+        tcp_nodelay on;
+        keepalive_timeout 65;
+        types_hash_max_size 2048;
+
+        # Gzip compression
+        gzip on;
+        gzip_vary on;
+        gzip_min_length 1024;
+        gzip_proxied any;
+        gzip_comp_level 6;
+        gzip_types
+            application/atom+xml
+            application/javascript
+            application/json
+            application/ld+json
+            application/manifest+json
+            application/rss+xml
+            application/vnd.geo+json
+            application/vnd.ms-fontobject
+            application/x-font-ttf
+            application/x-web-app-manifest+json
+            application/xhtml+xml
+            application/xml
+            font/opentype
+            image/bmp
+            image/svg+xml
+            image/x-icon
+            text/cache-manifest
+            text/css
+            text/plain
+            text/vcard
+            text/vnd.rim.location.xloc
+            text/vtt
+            text/x-component
+            text/x-cross-domain-policy;
+
+        server {
+            listen 80;
+            server_name _;
+            root /usr/share/nginx/html;
+            index index.html index.htm;
+
+            # Security headers
+            add_header X-Frame-Options "SAMEORIGIN" always;
+            add_header X-Content-Type-Options "nosniff" always;
+            add_header X-XSS-Protection "1; mode=block" always;
+            add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+            # Static files caching
+            location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+                expires 1y;
+                add_header Cache-Control "public, immutable";
+            }
+
+            # API proxy
+            location /api/ {
+                proxy_pass http://management-api:8082/api/;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_connect_timeout 30s;
+                proxy_send_timeout 30s;
+                proxy_read_timeout 30s;
+            }
+
+            # React app
+            location / {
+                try_files $uri $uri/ /index.html;
+            }
+
+            # Health check
+            location /health {
+                access_log off;
+                return 200 "healthy\n";
+                add_header Content-Type text/plain;
+            }
+        }
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: management-ui-build
+  namespace: default
+data:
+  # This will be populated by the build process
+  index.html: |
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Building...</title>
+    </head>
+    <body>
+        <div style="text-align: center; margin-top: 50px;">
+            <h1>Building Management UI...</h1>
+            <p>Please wait while the application is being built.</p>
+        </div>
+    </body>
+    </html>
