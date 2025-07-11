@@ -104,7 +104,32 @@ install_istio() {
         export PATH="$PWD/istio-${ISTIO_VERSION}/bin:$PATH"
     fi
     
-    istioctl install --set values.defaultRevision=default --set meshConfig.accessLogFile=/dev/stdout -y
+    istioctl install --set values.defaultRevision=default \
+      --set meshConfig.accessLogFile=/dev/stdout \
+      --set meshConfig.enableTracing=true \
+      --set meshConfig.extensionProviders[0].name=jaeger \
+      --set meshConfig.extensionProviders[0].opentelemetry.port="4317" \
+      --set meshConfig.extensionProviders[0].opentelemetry.service=jaeger-collector.monitoring.svc.cluster.local \
+      -y
+
+    # Patch Istio configmap
+    kubectl get cm istio -n istio-system -o yaml | \
+	    yq '.data.mesh=(.data.mesh | from_yaml | (.defaultConfig += {"tracing":{}}) | to_yaml)' | \
+	    kubectl apply -f -
+
+    # Enable tracing by default
+        kubectl apply -f - <<EOF
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: mesh-default
+  namespace: istio-system
+spec:
+  tracing:
+  - providers:
+    - name: jaeger
+EOF
+
     kubectl label namespace default istio-injection=disabled
     
     success "Istio installation completed"
@@ -269,16 +294,17 @@ install_observability() {
     helm repo update
     
     # Install Jaeger with in-memory storage for development
-    # helm upgrade --install jaeger jaegertracing/jaeger \
-    #     --namespace monitoring \
-    #     --version ${JAEGER_VERSION} \
-    #     --set allInOne.enabled=true \
-    #     --set collector.enabled=false \
-    #     --set query.enabled=false \
-    #     --set agent.enabled=false \
-    #     --set storage.type=none \
-    #     --wait
-
+    helm upgrade --install jaeger jaegertracing/jaeger \
+        --namespace monitoring \
+        --version ${JAEGER_VERSION} \
+        --set allInOne.enabled=true \
+        --set allInOne.extraEnv[0].name=QUERY_BASE_PATH,allInOne.extraEnv[0].value=/jaeger \
+        --set collector.enabled=false \
+        --set query.enabled=false \
+        --set agent.enabled=false \
+        --set storage.type=memory \
+        --set provisionDataStore.cassandra=false \
+        --wait
     
     # Install Kiali
     log "Installing Kiali ${KIALI_VERSION}..."
@@ -287,6 +313,10 @@ install_observability() {
         --version ${KIALI_VERSION} \
         --set auth.strategy="anonymous" \
         --set deployment.ingress.enabled=false \
+        --set external_services.tracing.enabled=true \
+        --set external_services.tracing.use_grpc=false \
+        --set external_services.tracing.internal_url="http://jaeger-query.monitoring:16686/jaeger" \
+        --set external_services.tracing.external_url="http://localhost:16686/jaeger" \
         --set external_services.prometheus.url="http://prometheus-kube-prometheus-prometheus.monitoring:9090" \
         --wait
     
@@ -657,6 +687,7 @@ main() {
     log "📊 Grafana: http://localhost:3000 (admin/prom-operator)"
     log "📈 Prometheus: http://localhost:9090"
     log "🗺️ Kiali: http://localhost:20001"
+    log "🗺️ Jaeger: http://localhost:16686"
     log "🤖 AI Gateway: http://localhost:8080"
     log "🔧 Management Service: http://localhost:8085 (API & UI)"
     log ""
@@ -668,7 +699,9 @@ main() {
     log "kubectl port-forward -n envoy-gateway-system svc/envoy-ai-gateway 8080:80 &"
     log "kubectl port-forward -n monitoring svc/prometheus-kube-prometheus-prometheus 9090:9090 &"
     log "kubectl port-forward -n monitoring svc/kiali 20001:20001 &"
+    log "kubectl port-forward -n monitoring svc/jaeger-query 16686:16686 &"
     log "kubectl port-forward -n default svc/management-service 8085:80 &"
+
     log ""
     success "🎉 Inference-in-a-Box setup complete!"
 }
