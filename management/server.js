@@ -7,13 +7,17 @@ const path = require('path');
 const yaml = require('js-yaml');
 
 const app = express();
-const PORT = process.env.PORT || 8082;
+const PORT = process.env.PORT || 8080;
 
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// CORS
+// Serve static files from the React app build directory
+const buildPath = path.join(__dirname, 'ui', 'build');
+app.use(express.static(buildPath));
+
+// CORS - Allow frontend to access API
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -342,6 +346,11 @@ app.get('/api/frameworks', (req, res) => {
   });
 });
 
+// Serve React app for all other routes (SPA fallback)
+app.get('*', (req, res) => {
+  res.sendFile(path.join(buildPath, 'index.html'));
+});
+
 // Error handling middleware
 app.use((error, req, res, next) => {
   console.error('Error:', error);
@@ -350,7 +359,7 @@ app.use((error, req, res, next) => {
 
 // Start server
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Management API server running on port ${PORT}`);
+  console.log(`Management server running on port ${PORT}`);
   console.log('Available endpoints:');
   console.log('  GET  /health - Health check');
   console.log('  GET  /api/tokens - Get JWT tokens');
@@ -363,4 +372,5 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log('  GET  /api/models/:name/logs - Get model logs');
   console.log('  GET  /api/tenant - Get tenant info');
   console.log('  GET  /api/frameworks - List supported frameworks');
+  console.log('  GET  /* - Serve React application');
 });

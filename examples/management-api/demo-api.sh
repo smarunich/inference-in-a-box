@@ -6,7 +6,7 @@
 set -e
 
 # Configuration
-API_URL="http://localhost:8082"
+API_URL="http://localhost:8085"
 TENANT="tenant-a"
 MODEL_NAME="demo-sklearn-model"
 
@@ -59,7 +59,7 @@ check_api_health() {
         print_success "Management API is healthy"
     else
         print_error "Management API is not accessible at ${API_URL}"
-        print_warning "Make sure to run: kubectl port-forward -n default svc/management-api 8082:8082"
+        print_warning "Make sure to run: kubectl port-forward -n default svc/management-service 8085:80"
         exit 1
     fi
 }
