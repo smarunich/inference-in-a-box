@@ -279,12 +279,26 @@ install_observability() {
     helm repo add kiali https://kiali.org/helm-charts
     helm repo update
     
+    # Add configuration to allow pod annotations scraping
+    cat <<EOF | kubectl apply -f -
+apiVersion: v1
+data:
+  additionalscrapconfig.yaml: LSBqb2JfbmFtZTogJ2t1YmVybmV0ZXMtcG9kcycKICBrdWJlcm5ldGVzX3NkX2NvbmZpZ3M6CiAgLSByb2xlOiBwb2QKICByZWxhYmVsX2NvbmZpZ3M6CiAgLSBzb3VyY2VfbGFiZWxzOiBbX19tZXRhX2t1YmVybmV0ZXNfcG9kX2Fubm90YXRpb25fcHJvbWV0aGV1c19pb19zY3JhcGVdCiAgICBhY3Rpb246IGtlZXAKICAgIHJlZ2V4OiB0cnVlCiAgLSBzb3VyY2VfbGFiZWxzOiBbX19tZXRhX2t1YmVybmV0ZXNfcG9kX2Fubm90YXRpb25fcHJvbWV0aGV1c19pb19wYXRoXQogICAgYWN0aW9uOiByZXBsYWNlCiAgICB0YXJnZXRfbGFiZWw6IF9fbWV0cmljc19wYXRoX18KICAgIHJlZ2V4OiAoLispCiAgLSBzb3VyY2VfbGFiZWxzOiBbX19hZGRyZXNzX18sIF9fbWV0YV9rdWJlcm5ldGVzX3BvZF9hbm5vdGF0aW9uX3Byb21ldGhldXNfaW9fcG9ydF0KICAgIGFjdGlvbjogcmVwbGFjZQogICAgcmVnZXg6IChbXjpdKykoPzo6XGQrKT87KFxkKykKICAgIHJlcGxhY2VtZW50OiAkMTokMgogICAgdGFyZ2V0X2xhYmVsOiBfX2FkZHJlc3NfXwogIC0gYWN0aW9uOiBsYWJlbG1hcAogICAgcmVnZXg6IF9fbWV0YV9rdWJlcm5ldGVzX3BvZF9sYWJlbF8oLispCiAgLSBzb3VyY2VfbGFiZWxzOiBbX19tZXRhX2t1YmVybmV0ZXNfbmFtZXNwYWNlXQogICAgYWN0aW9uOiByZXBsYWNlCiAgICB0YXJnZXRfbGFiZWw6IGt1YmVybmV0ZXNfbmFtZXNwYWNlCiAgLSBzb3VyY2VfbGFiZWxzOiBbX19tZXRhX2t1YmVybmV0ZXNfcG9kX25hbWVdCiAgICBhY3Rpb246IHJlcGxhY2UKICAgIHRhcmdldF9sYWJlbDoga3ViZXJuZXRlc19wb2RfbmFtZQo=
+kind: Secret
+metadata:
+  name: additional-scrape-configs
+  namespace: monitoring
+EOF
+
     # Install Prometheus
     log "Installing Prometheus ${KUBE_PROMETHEUS_STACK_VERSION}..."
     helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
         --namespace monitoring \
         --version ${KUBE_PROMETHEUS_STACK_VERSION} \
         --set admissionWebhooks.patch.podAnnotations."sidecar\.istio\.io/inject"=false \
+        --set prometheus.prometheusSpec.additionalScrapeConfigsSecret.enabled=true \
+        --set prometheus.prometheusSpec.additionalScrapeConfigsSecret.name=additional-scrape-configs \
+        --set prometheus.prometheusSpec.additionalScrapeConfigsSecret.key=additionalscrapconfig.yaml \
         --wait
     
     # Install Jaeger
