@@ -319,6 +319,12 @@ install_observability() {
         --set external_services.tracing.internal_url="http://jaeger-query.monitoring:16686/jaeger" \
         --set external_services.tracing.external_url="http://localhost:16686/jaeger" \
         --set external_services.prometheus.url="http://prometheus-kube-prometheus-prometheus.monitoring:9090" \
+	--set external_services.grafana.enabled=true \
+        --set external_services.grafana.internal_url="http://prometheus-grafana.monitoring" \
+        --set external_services.grafana.external_url="http://localhost:3000/" \
+        --set external_services.grafana.auth.type=basic \
+        --set external_services.grafana.auth.username=admin \
+        --set external_services.grafana.auth.password=prom-operator \
         --wait
     
     # Install KServe Grafana dashboards
