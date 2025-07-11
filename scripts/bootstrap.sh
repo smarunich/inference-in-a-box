@@ -128,6 +128,7 @@ spec:
   tracing:
   - providers:
     - name: jaeger
+    randomSamplingPercentage: 100
 EOF
 
     kubectl label namespace default istio-injection=disabled
