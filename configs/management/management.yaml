@@ -1,131 +1,7 @@
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: management-api
-  namespace: default
-  labels:
-    app: management-api
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: management-api
-  template:
-    metadata:
-      labels:
-        app: management-api
-    spec:
-      serviceAccountName: management-api
-      containers:
-      - name: management-api
-        image: node:18-alpine
-        ports:
-        - containerPort: 8082
-        env:
-        - name: PORT
-          value: "8082"
-        - name: NODE_ENV
-          value: "production"
-        command: ["/bin/sh"]
-        args:
-        - -c
-        - |
-          apk add --no-cache curl
-          npm install -g express jsonwebtoken js-yaml
-          cat > /app/server.js << 'EOF'
-          # Server code will be mounted here
-          EOF
-          cd /app && node server.js
-        workingDir: /app
-        volumeMounts:
-        - name: server-code
-          mountPath: /app/server.js
-          subPath: server.js
-        - name: package-json
-          mountPath: /app/package.json
-          subPath: package.json
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8082
-          initialDelaySeconds: 30
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 8082
-          initialDelaySeconds: 10
-          periodSeconds: 5
-        resources:
-          requests:
-            memory: "256Mi"
-            cpu: "250m"
-          limits:
-            memory: "512Mi"
-            cpu: "500m"
-      volumes:
-      - name: server-code
-        configMap:
-          name: management-api-code
-      - name: package-json
-        configMap:
-          name: management-api-package
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: management-api
-  namespace: default
-  labels:
-    app: management-api
-spec:
-  selector:
-    app: management-api
-  ports:
-  - name: http
-    port: 8082
-    targetPort: 8082
-    protocol: TCP
-  type: ClusterIP
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: management-api
-  namespace: default
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: management-api
-rules:
-- apiGroups: ["serving.kserve.io"]
-  resources: ["inferenceservices"]
-  verbs: ["get", "list", "create", "update", "patch", "delete"]
-- apiGroups: [""]
-  resources: ["pods", "pods/log"]
-  verbs: ["get", "list"]
-- apiGroups: ["apps"]
-  resources: ["deployments"]
-  verbs: ["get", "list"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: management-api
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: management-api
-subjects:
-- kind: ServiceAccount
-  name: management-api
-  namespace: default
----
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: management-api-code
+  name: management-server-config
   namespace: default
 data:
   server.js: |
@@ -138,13 +14,17 @@ data:
     const yaml = require('js-yaml');
 
     const app = express();
-    const PORT = process.env.PORT || 8082;
+    const PORT = process.env.PORT || 8080;
 
     // Middleware
     app.use(express.json());
     app.use(express.urlencoded({ extended: true }));
 
-    // CORS
+    // Serve static files from the React app build directory
+    const buildPath = path.join(__dirname, 'ui', 'build');
+    app.use(express.static(buildPath));
+
+    // CORS - Allow frontend to access API
     app.use((req, res, next) => {
       res.header('Access-Control-Allow-Origin', '*');
       res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -215,16 +95,13 @@ data:
     };
 
     // API Routes
-
-    // Health check
     app.get('/health', (req, res) => {
       res.json({ status: 'healthy', timestamp: new Date().toISOString() });
     });
 
-    // Get JWT tokens (proxy to existing JWT server)
     app.get('/api/tokens', async (req, res) => {
       try {
-        const result = await execCommand('curl -s http://jwt-server:8080/tokens');
+        const result = await execCommand('kubectl port-forward -n default svc/jwt-server 8081:8080 > /dev/null 2>&1 & sleep 2 && curl -s http://localhost:8081/tokens && pkill -f "kubectl port-forward.*jwt-server"');
         const tokens = JSON.parse(result);
         res.json(tokens);
       } catch (error) {
@@ -232,7 +109,6 @@ data:
       }
     });
 
-    // List all models
     app.get('/api/models', authenticateToken, async (req, res) => {
       try {
         const tenant = req.user.tenant;
@@ -256,7 +132,6 @@ data:
       }
     });
 
-    // Get specific model
     app.get('/api/models/:modelName', authenticateToken, async (req, res) => {
       try {
         const tenant = req.user.tenant;
@@ -286,7 +161,6 @@ data:
       }
     });
 
-    // Create new model
     app.post('/api/models', authenticateToken, async (req, res) => {
       try {
         const tenant = req.user.tenant;
@@ -318,7 +192,6 @@ data:
         const command = `kubectl apply -f ${tempFile}`;
         await execCommand(command);
         
-        // Clean up temp file
         await fs.unlink(tempFile);
 
         res.status(201).json({ 
@@ -332,26 +205,18 @@ data:
       }
     });
 
-    // Update model
     app.put('/api/models/:modelName', authenticateToken, async (req, res) => {
       try {
         const tenant = req.user.tenant;
         const modelName = req.params.modelName;
         const { framework, storageUri, minReplicas, maxReplicas, scaleTarget, scaleMetric } = req.body;
 
-        // Get existing model first
         const getCommand = `kubectl get inferenceservice ${modelName} -n ${tenant} -o json`;
         const existingModel = JSON.parse(await execCommand(getCommand));
 
-        // Find current framework
-        const currentFramework = Object.keys(existingModel.spec.predictor).find(k => 
-          !['minReplicas', 'maxReplicas', 'scaleTarget', 'scaleMetric'].includes(k)
-        );
-
-        // Update with new values
         const config = {
-          framework: framework || currentFramework,
-          storageUri: storageUri || existingModel.spec.predictor[currentFramework]?.storageUri,
+          framework: framework || Object.keys(existingModel.spec.predictor).find(k => k !== 'minReplicas' && k !== 'maxReplicas' && k !== 'scaleTarget' && k !== 'scaleMetric'),
+          storageUri: storageUri || existingModel.spec.predictor[framework]?.storageUri,
           minReplicas: minReplicas || existingModel.spec.predictor.minReplicas,
           maxReplicas: maxReplicas || existingModel.spec.predictor.maxReplicas,
           scaleTarget: scaleTarget || existingModel.spec.predictor.scaleTarget,
@@ -366,7 +231,6 @@ data:
         const command = `kubectl apply -f ${tempFile}`;
         await execCommand(command);
         
-        // Clean up temp file
         await fs.unlink(tempFile);
 
         res.json({ 
@@ -384,7 +248,6 @@ data:
       }
     });
 
-    // Delete model
     app.delete('/api/models/:modelName', authenticateToken, async (req, res) => {
       try {
         const tenant = req.user.tenant;
@@ -402,14 +265,12 @@ data:
       }
     });
 
-    // Inference endpoint (proxy to model)
     app.post('/api/models/:modelName/predict', authenticateToken, async (req, res) => {
       try {
         const tenant = req.user.tenant;
         const modelName = req.params.modelName;
         const inputData = req.body;
 
-        // Get model URL
         const getCommand = `kubectl get inferenceservice ${modelName} -n ${tenant} -o jsonpath='{.status.url}'`;
         const modelUrl = await execCommand(getCommand);
 
@@ -417,7 +278,6 @@ data:
           return res.status(404).json({ error: 'Model not ready or not found' });
         }
 
-        // Make prediction request
         const curlCommand = `curl -s -X POST ${modelUrl}/v1/models/${modelName}:predict \
           -H "Content-Type: application/json" \
           -H "Authorization: Bearer ${req.headers.authorization.split(' ')[1]}" \
@@ -432,7 +292,6 @@ data:
       }
     });
 
-    // Get model logs
     app.get('/api/models/:modelName/logs', authenticateToken, async (req, res) => {
       try {
         const tenant = req.user.tenant;
@@ -448,7 +307,6 @@ data:
       }
     });
 
-    // Get tenant info
     app.get('/api/tenant', authenticateToken, (req, res) => {
       res.json({
         tenant: req.user.tenant,
@@ -459,7 +317,6 @@ data:
       });
     });
 
-    // List available frameworks
     app.get('/api/frameworks', (req, res) => {
       res.json({
         frameworks: [
@@ -472,15 +329,18 @@ data:
       });
     });
 
-    // Error handling middleware
+    // Serve React app for all other routes (SPA fallback)
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(buildPath, 'index.html'));
+    });
+
     app.use((error, req, res, next) => {
       console.error('Error:', error);
       res.status(500).json({ error: 'Internal server error' });
     });
 
-    // Start server
     app.listen(PORT, '0.0.0.0', () => {
-      console.log(`Management API server running on port ${PORT}`);
+      console.log(`Management server running on port ${PORT}`);
       console.log('Available endpoints:');
       console.log('  GET  /health - Health check');
       console.log('  GET  /api/tokens - Get JWT tokens');
@@ -493,29 +353,247 @@ data:
       console.log('  GET  /api/models/:name/logs - Get model logs');
       console.log('  GET  /api/tenant - Get tenant info');
       console.log('  GET  /api/frameworks - List supported frameworks');
+      console.log('  GET  /* - Serve React application');
     });
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: management-api-package
-  namespace: default
-data:
   package.json: |
     {
-      "name": "inference-management-api",
+      "name": "inference-management",
       "version": "1.0.0",
-      "description": "Management API for AI/ML inference platform",
+      "description": "Consolidated Management API and UI for AI/ML inference platform",
       "main": "server.js",
       "scripts": {
-        "start": "node server.js"
+        "start": "node server.js",
+        "dev": "nodemon server.js"
       },
       "dependencies": {
         "express": "^4.18.2",
         "jsonwebtoken": "^9.0.2",
         "js-yaml": "^4.1.0"
       },
+      "devDependencies": {
+        "nodemon": "^3.0.1"
+      },
       "keywords": ["kubernetes", "kserve", "ai", "ml", "inference", "management"],
       "author": "Inference-in-a-Box",
       "license": "MIT"
     }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: management-ui-source
+  namespace: default
+data:
+  package.json: |
+    {
+      "name": "inference-management-ui",
+      "version": "1.0.0",
+      "description": "Web UI for AI/ML inference platform management",
+      "private": true,
+      "dependencies": {
+        "@testing-library/jest-dom": "^5.16.4",
+        "@testing-library/react": "^13.3.0",
+        "@testing-library/user-event": "^13.5.0",
+        "react": "^18.2.0",
+        "react-dom": "^18.2.0",
+        "react-router-dom": "^6.3.0",
+        "react-scripts": "5.0.1",
+        "axios": "^1.4.0",
+        "@uiw/react-json-view": "^1.6.8",
+        "react-hot-toast": "^2.4.1",
+        "lucide-react": "^0.263.1"
+      },
+      "scripts": {
+        "start": "react-scripts start",
+        "build": "react-scripts build",
+        "test": "react-scripts test",
+        "eject": "react-scripts eject"
+      },
+      "eslintConfig": {
+        "extends": [
+          "react-app",
+          "react-app/jest"
+        ]
+      },
+      "browserslist": {
+        "production": [
+          ">0.2%",
+          "not dead",
+          "not op_mini all"
+        ],
+        "development": [
+          "last 1 chrome version",
+          "last 1 firefox version",
+          "last 1 safari version"
+        ]
+      },
+      "homepage": "."
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: management-ui-build
+  namespace: default
+data: {}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: management-service
+  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: management-service
+rules:
+- apiGroups: ["serving.kserve.io"]
+  resources: ["inferenceservices"]
+  verbs: ["get", "list", "create", "update", "patch", "delete"]
+- apiGroups: [""]
+  resources: ["pods", "pods/log"]
+  verbs: ["get", "list"]
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: management-service
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: management-service
+subjects:
+- kind: ServiceAccount
+  name: management-service
+  namespace: default
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: management-service
+  namespace: default
+  labels:
+    app: management-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: management-service
+  template:
+    metadata:
+      labels:
+        app: management-service
+    spec:
+      serviceAccountName: management-service
+      initContainers:
+      - name: ui-builder
+        image: node:18-alpine
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+          echo "Building React UI..."
+          cd /tmp/ui-source
+          npm install
+          npm run build
+          echo "Copying build artifacts..."
+          cp -r build/* /tmp/ui-build/
+          echo "UI build complete"
+        volumeMounts:
+        - name: ui-source
+          mountPath: /tmp/ui-source
+        - name: ui-build
+          mountPath: /tmp/ui-build
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+      containers:
+      - name: management-service
+        image: node:18-alpine
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+          # Install kubectl
+          apk add --no-cache curl
+          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x kubectl
+          mv kubectl /usr/local/bin/
+          
+          # Setup application
+          cd /app
+          npm install
+          
+          # Create UI build directory structure
+          mkdir -p ui/build
+          cp -r /tmp/ui-build/* ui/build/ 2>/dev/null || echo "No UI build artifacts found"
+          
+          # Start server
+          node server.js
+        ports:
+        - containerPort: 8080
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        env:
+        - name: PORT
+          value: "8080"
+        - name: NODE_ENV
+          value: "production"
+        volumeMounts:
+        - name: server-config
+          mountPath: /app
+        - name: ui-build
+          mountPath: /tmp/ui-build
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+      volumes:
+      - name: server-config
+        configMap:
+          name: management-server-config
+      - name: ui-source
+        configMap:
+          name: management-ui-source
+      - name: ui-build
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: management-service
+  namespace: default
+  labels:
+    app: management-service
+spec:
+  selector:
+    app: management-service
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080
+    protocol: TCP
+  type: ClusterIP

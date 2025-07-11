@@ -8,7 +8,7 @@ First, get a JWT token:
 
 ```bash
 # Get tokens for all tenants
-curl http://localhost:8082/api/tokens
+curl http://localhost:8085/api/tokens
 
 # Example response:
 {
@@ -25,7 +25,7 @@ curl http://localhost:8082/api/tokens
 ```bash
 # List all models for authenticated tenant
 curl -H "Authorization: Bearer <token>" \
-     http://localhost:8082/api/models
+     http://localhost:8085/api/models
 ```
 
 ### Get Model Details
@@ -33,7 +33,7 @@ curl -H "Authorization: Bearer <token>" \
 ```bash
 # Get specific model details
 curl -H "Authorization: Bearer <token>" \
-     http://localhost:8082/api/models/sklearn-iris
+     http://localhost:8085/api/models/sklearn-iris
 ```
 
 ### Create Model
@@ -51,7 +51,7 @@ curl -X POST \
        "maxReplicas": 3,
        "scaleTarget": 60
      }' \
-     http://localhost:8082/api/models
+     http://localhost:8085/api/models
 
 # Create a TensorFlow model
 curl -X POST \
@@ -65,7 +65,7 @@ curl -X POST \
        "maxReplicas": 5,
        "scaleTarget": 100
      }' \
-     http://localhost:8082/api/models
+     http://localhost:8085/api/models
 ```
 
 ### Update Model
@@ -80,7 +80,7 @@ curl -X PUT \
        "maxReplicas": 10,
        "scaleTarget": 80
      }' \
-     http://localhost:8082/api/models/my-sklearn-model
+     http://localhost:8085/api/models/my-sklearn-model
 ```
 
 ### Delete Model
@@ -89,7 +89,7 @@ curl -X PUT \
 # Delete a model
 curl -X DELETE \
      -H "Authorization: Bearer <token>" \
-     http://localhost:8082/api/models/my-sklearn-model
+     http://localhost:8085/api/models/my-sklearn-model
 ```
 
 ## Model Inference
@@ -107,7 +107,7 @@ curl -X POST \
          [6.0, 3.4, 4.5, 1.6]
        ]
      }' \
-     http://localhost:8082/api/models/sklearn-iris/predict
+     http://localhost:8085/api/models/sklearn-iris/predict
 
 # Make prediction with TensorFlow model
 curl -X POST \
@@ -118,7 +118,7 @@ curl -X POST \
          {"b64": "iVBORw0KGgoAAAANSUhEUgAAABwAAAAcCAAAAABXZoBIAAAAw0lEQVR4nGNgGFQAB..."}
        ]
      }' \
-     http://localhost:8082/api/models/tensorflow-flowers/predict
+     http://localhost:8085/api/models/tensorflow-flowers/predict
 ```
 
 ## Monitoring
@@ -128,7 +128,7 @@ curl -X POST \
 ```bash
 # Get recent logs for a model
 curl -H "Authorization: Bearer <token>" \
-     "http://localhost:8082/api/models/sklearn-iris/logs?lines=50"
+     "http://localhost:8085/api/models/sklearn-iris/logs?lines=50"
 ```
 
 ### Get Tenant Information
@@ -136,14 +136,14 @@ curl -H "Authorization: Bearer <token>" \
 ```bash
 # Get information about the authenticated tenant
 curl -H "Authorization: Bearer <token>" \
-     http://localhost:8082/api/tenant
+     http://localhost:8085/api/tenant
 ```
 
 ## Supported Frameworks
 
 ```bash
 # List all supported ML frameworks
-curl http://localhost:8082/api/frameworks
+curl http://localhost:8085/api/frameworks
 ```
 
 ## Port Forwarding
@@ -152,7 +152,7 @@ To access the Management API locally:
 
 ```bash
 # Port forward to Management API
-kubectl port-forward -n default svc/management-api 8082:8082
+kubectl port-forward -n default svc/management-service 8085:80
 ```
 
 ## Complete Example Script
@@ -163,7 +163,7 @@ Here's a complete example that demonstrates the full workflow:
 #!/bin/bash
 
 # Set the API endpoint
-API_URL="http://localhost:8082"
+API_URL="http://localhost:8085"
 
 # Get JWT token for tenant-a
 TOKEN=$(curl -s ${API_URL}/api/tokens | jq -r '.["tenant-a"]')

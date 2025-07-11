@@ -80,32 +80,18 @@ configure_docker() {
     print_success "Docker configured for Artifact Registry"
 }
 
-# Build Management API Docker image
-build_management_api() {
-    print_step "Building Management API Docker image (multi-arch)"
+# Build Management Service Docker image (consolidated)
+build_management_service() {
+    print_step "Building Management Service Docker image (multi-arch)"
     
     # Build multi-architecture image
     docker buildx build \
         --platform linux/amd64,linux/arm64 \
-        -t "$REGISTRY/management-api:$TAG" \
+        -t "$REGISTRY/management-service:$TAG" \
         --push \
-        "$PROJECT_ROOT/management-api/"
+        "$PROJECT_ROOT/management/"
     
-    print_success "Management API multi-arch image built and pushed"
-}
-
-# Build Management UI Docker image
-build_management_ui() {
-    print_step "Building Management UI Docker image (multi-arch)"
-    
-    # Build multi-architecture image
-    docker buildx build \
-        --platform linux/amd64,linux/arm64 \
-        -t "$REGISTRY/management-ui:$TAG" \
-        --push \
-        "$PROJECT_ROOT/management-ui/"
-    
-    print_success "Management UI multi-arch image built and pushed"
+    print_success "Management Service multi-arch image built and pushed"
 }
 
 # Push images to registry (already done in buildx)
@@ -118,21 +104,9 @@ push_images() {
 update_manifests() {
     print_step "Updating Kubernetes manifests"
     
-    # Update Management API deployment
-    sed -i.bak "s|image: node:18-alpine|image: $REGISTRY/management-api:$TAG|g" \
-        "$PROJECT_ROOT/configs/management-api/management-api.yaml"
-    
-    # Remove the complex command and args since they're now in the image
-    sed -i.bak '/command: \[\"\/bin\/sh\"\]/,/cd \/app && node server.js/d' \
-        "$PROJECT_ROOT/configs/management-api/management-api.yaml"
-    
-    # Update Management UI deployment
-    sed -i.bak "s|image: nginx:alpine|image: $REGISTRY/management-ui:$TAG|g" \
-        "$PROJECT_ROOT/configs/management-ui/management-ui.yaml"
-    
-    # Remove the initContainer since the image is now pre-built
-    sed -i.bak '/initContainers:/,/name: ui-build-shared/d' \
-        "$PROJECT_ROOT/configs/management-ui/management-ui.yaml"
+    # Update Management Service deployment
+    sed -i.bak "s|image: node:18-alpine|image: $REGISTRY/management-service:$TAG|g" \
+        "$PROJECT_ROOT/configs/management/management-registry.yaml"
     
     print_success "Kubernetes manifests updated"
 }
@@ -142,18 +116,15 @@ show_image_info() {
     print_step "Image Information"
     
     echo "Built multi-arch images:"
-    echo "  Management API: $REGISTRY/management-api:$TAG"
-    echo "  Management UI:  $REGISTRY/management-ui:$TAG"
+    echo "  Management Service: $REGISTRY/management-service:$TAG"
     
     echo -e "\nArchitectures: linux/amd64, linux/arm64"
     
     echo -e "\nTo deploy using these images:"
-    echo "kubectl apply -f $PROJECT_ROOT/configs/management-api/management-api-registry.yaml"
-    echo "kubectl apply -f $PROJECT_ROOT/configs/management-ui/management-ui-registry.yaml"
+    echo "kubectl apply -f $PROJECT_ROOT/configs/management/management-registry.yaml"
     
     echo -e "\nTo inspect multi-arch manifest:"
-    echo "docker buildx imagetools inspect $REGISTRY/management-api:$TAG"
-    echo "docker buildx imagetools inspect $REGISTRY/management-ui:$TAG"
+    echo "docker buildx imagetools inspect $REGISTRY/management-service:$TAG"
 }
 
 # Main execution
@@ -163,8 +134,7 @@ main() {
     
     check_docker
     configure_docker
-    build_management_api
-    build_management_ui
+    build_management_service
     push_images
     update_manifests
     show_image_info

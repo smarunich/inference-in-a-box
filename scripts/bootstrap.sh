@@ -470,29 +470,21 @@ setup_multitenancy() {
     success "Multi-tenant namespaces setup completed"
 }
 
-# Deploy management services
+# Deploy consolidated management service
 deploy_management_services() {
-    log "Deploying management API and UI services..."
+    log "Deploying consolidated management service..."
     
     kubectl config use-context kind-${CLUSTER_NAME}
     
-    # Deploy Management API
-    log "Deploying Management API..."
-    kubectl apply -f ${PROJECT_DIR}/configs/management-api/management-api-registry.yaml
+    # Deploy Management Service (consolidated)
+    log "Deploying Management Service..."
+    kubectl apply -f ${PROJECT_DIR}/configs/management/management-registry.yaml
     
-    # Wait for Management API to be ready
-    log "Waiting for Management API to be ready..."
-    kubectl wait --timeout=300s -n default deployment/management-api --for=condition=Available
+    # Wait for Management Service to be ready
+    log "Waiting for Management Service to be ready..."
+    kubectl wait --timeout=300s -n default deployment/management-service --for=condition=Available
     
-    # Deploy Management UI
-    log "Deploying Management UI..."
-    kubectl apply -f ${PROJECT_DIR}/configs/management-ui/management-ui-registry.yaml
-    
-    # Wait for Management UI to be ready
-    log "Waiting for Management UI to be ready..."
-    kubectl wait --timeout=300s -n default deployment/management-ui --for=condition=Available
-    
-    success "Management services deployed"
+    success "Consolidated management service deployed"
 }
 
 # Deploy sample models
@@ -697,8 +689,7 @@ main() {
     log "🗺️ Kiali: http://localhost:20001"
     log "🗺️ Jaeger: http://localhost:16686"
     log "🤖 AI Gateway: http://localhost:8080"
-    log "🔧 Management API: http://localhost:8082"
-    log "🖥️ Management UI: http://localhost:8083"
+    log "🔧 Management Service: http://localhost:8085 (API & UI)"
     log ""
     log "🔑 JWT Tokens available at: kubectl port-forward -n default svc/jwt-server 8081:8080"
     log "   Then visit: http://localhost:8081/tokens"
@@ -709,8 +700,8 @@ main() {
     log "kubectl port-forward -n monitoring svc/prometheus-kube-prometheus-prometheus 9090:9090 &"
     log "kubectl port-forward -n monitoring svc/kiali 20001:20001 &"
     log "kubectl port-forward -n monitoring svc/jaeger-query 16686:16686 &"
-    log "kubectl port-forward -n default svc/management-api 8082:8082 &"
-    log "kubectl port-forward -n default svc/management-ui 8083:80 &"
+    log "kubectl port-forward -n default svc/management-service 8085:80 &"
+
     log ""
     success "🎉 Inference-in-a-Box setup complete!"
 }

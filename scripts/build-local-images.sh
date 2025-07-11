@@ -50,9 +50,19 @@ check_docker() {
     docker buildx use default
 }
 
-# Build Management API Docker image
+# Build Management Service Docker image (consolidated)
+build_management_service() {
+    print_step "Building Management Service Docker image (consolidated)"
+    
+    # Build the image
+    docker build -t "management-service:$TAG" "$PROJECT_ROOT/management/"
+    
+    print_success "Management Service image built"
+}
+
+# Build Management API Docker image (legacy)
 build_management_api() {
-    print_step "Building Management API Docker image (local)"
+    print_step "Building Management API Docker image (legacy)"
     
     # Build the image
     docker build -t "management-api:$TAG" "$PROJECT_ROOT/management-api/"
@@ -60,9 +70,9 @@ build_management_api() {
     print_success "Management API image built"
 }
 
-# Build Management UI Docker image
+# Build Management UI Docker image (legacy)
 build_management_ui() {
-    print_step "Building Management UI Docker image (local)"
+    print_step "Building Management UI Docker image (legacy)"
     
     # Build the image
     docker build -t "management-ui:$TAG" "$PROJECT_ROOT/management-ui/"
@@ -75,14 +85,20 @@ show_image_info() {
     print_step "Image Information"
     
     echo "Built local images:"
-    echo "  Management API: management-api:$TAG"
-    echo "  Management UI:  management-ui:$TAG"
+    echo "  Management Service: management-service:$TAG (consolidated)"
+    echo "  Management API:     management-api:$TAG (legacy)"
+    echo "  Management UI:      management-ui:$TAG (legacy)"
     
     echo -e "\nImage sizes:"
+    docker images "management-service:$TAG" --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}"
     docker images "management-api:$TAG" --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}"
     docker images "management-ui:$TAG" --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}"
     
     echo -e "\nTo test locally:"
+    echo "# Consolidated service (recommended):"
+    echo "docker run -d -p 8080:8080 --name management-service management-service:$TAG"
+    echo ""
+    echo "# Legacy separate services:"
     echo "docker run -d -p 8082:8082 --name management-api management-api:$TAG"
     echo "docker run -d -p 8083:80 --name management-ui management-ui:$TAG"
 }
@@ -93,6 +109,7 @@ main() {
     echo -e "${BLUE}=========================${NC}"
     
     check_docker
+    build_management_service
     build_management_api
     build_management_ui
     show_image_info
