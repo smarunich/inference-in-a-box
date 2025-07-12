@@ -301,6 +301,17 @@ EOF
         --set prometheus.prometheusSpec.additionalScrapeConfigsSecret.key=additionalscrapconfig.yaml \
         --wait
     
+    # Install the Istio Grafana dashboards
+    datasource=default
+    for DASHBOARD in 7645 7639 11829 7636 7630 13277; do
+      REVISION="$(curl -s https://grafana.com/api/dashboards/${DASHBOARD}/revisions -s | \
+        jq ".items[] | select(.description | contains(\"${VERSION}\")) | .revision" | tail -n 1)"
+      curl -s https://grafana.com/api/dashboards/${DASHBOARD}/revisions/${REVISION}/download > /tmp/${DASHBOARD}.json
+      envsubst < /tmp/${DASHBOARD}.json > /tmp/dashboard_${DASHBOARD}.json
+      kubectl create cm dashboard-${DASHBOARD} -n monitoring --from-file /tmp/dashboard_${DASHBOARD}.json
+      kubectl label cm dashboard-${DASHBOARD} -n monitoring grafana_dashboard=1
+    done
+
     # Install Jaeger
     log "Installing Jaeger ${JAEGER_VERSION}..."
     
