@@ -1,0 +1,15 @@
+apiVersion: "serving.kserve.io/v1beta1"
+kind: "InferenceService"
+metadata:
+  name: "huggingface-t5"
+  namespace: tenant-b
+spec:
+  predictor:
+    minReplicas: 1
+    model:
+      modelFormat:
+        name: huggingface
+      args:
+        - --model_name=t5
+        - --model_id=google-t5/t5-small
+        - --backend=huggingface
