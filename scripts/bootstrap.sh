@@ -528,7 +528,7 @@ deploy_sample_models() {
     # Apply sample model configurations
     log "Deploying example models..."
     kubectl apply -f ${PROJECT_DIR}/configs/kserve/models/sklearn-iris.yaml
-    kubectl apply -f ${PROJECT_DIR}/configs/kserve/models/llm-runtime-tiny-llm.yaml
+    kubectl apply -f ${PROJECT_DIR}/configs/kserve/models/huggingface-t5.yaml
     kubectl apply -f ${PROJECT_DIR}/configs/kserve/models/pytorch-resnet.yaml
     
     # Wait for models to be ready
