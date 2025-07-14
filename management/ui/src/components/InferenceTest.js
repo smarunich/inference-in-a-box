@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useApi } from '../contexts/ApiContext';
+import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
 import JsonView from '@uiw/react-json-view';
-import { Play, Copy } from 'lucide-react';
+import { Play, Copy, Settings, Globe, Plus, Minus } from 'lucide-react';
 
 const InferenceTest = () => {
   const [models, setModels] = useState([]);
@@ -11,11 +12,64 @@ const InferenceTest = () => {
   const [response, setResponse] = useState(null);
   const [loading, setLoading] = useState(false);
   const [loadingModels, setLoadingModels] = useState(true);
+  const [showConnectionSettings, setShowConnectionSettings] = useState(false);
+  
+  // Connection settings
+  const [connectionSettings, setConnectionSettings] = useState({
+    useCustom: false,
+    host: '',
+    port: '',
+    path: '',
+    protocol: 'http',
+    headers: [{ key: 'Content-Type', value: 'application/json' }]
+  });
+  
   const api = useApi();
+  const { user } = useAuth();
 
   useEffect(() => {
     fetchModels();
   }, []);
+
+  useEffect(() => {
+    if (selectedModel && models.length > 0) {
+      updateConnectionSettings();
+    }
+  }, [selectedModel, models]);
+
+  const updateConnectionSettings = () => {
+    const model = models.find(m => m.name === selectedModel);
+    if (model && model.url) {
+      try {
+        const url = new URL(model.url);
+        setConnectionSettings(prev => ({
+          ...prev,
+          host: url.hostname,
+          port: url.port || (url.protocol === 'https:' ? '443' : '80'),
+          path: `/v1/models/${selectedModel}:predict`,
+          protocol: url.protocol.replace(':', ''),
+          headers: [
+            { key: 'Content-Type', value: 'application/json' },
+            { key: 'Authorization', value: `Bearer ${user?.token || 'your-token-here'}` }
+          ]
+        }));
+      } catch (error) {
+        console.error('Error parsing model URL:', error);
+        // Fallback to default settings
+        setConnectionSettings(prev => ({
+          ...prev,
+          host: 'localhost',
+          port: '8080',
+          path: `/v1/models/${selectedModel}:predict`,
+          protocol: 'http',
+          headers: [
+            { key: 'Content-Type', value: 'application/json' },
+            { key: 'Authorization', value: `Bearer ${user?.token || 'your-token-here'}` }
+          ]
+        }));
+      }
+    }
+  };
 
   const fetchModels = async () => {
     try {
@@ -31,6 +85,35 @@ const InferenceTest = () => {
     } finally {
       setLoadingModels(false);
     }
+  };
+
+  const addHeader = () => {
+    setConnectionSettings(prev => ({
+      ...prev,
+      headers: [...prev.headers, { key: '', value: '' }]
+    }));
+  };
+
+  const removeHeader = (index) => {
+    setConnectionSettings(prev => ({
+      ...prev,
+      headers: prev.headers.filter((_, i) => i !== index)
+    }));
+  };
+
+  const updateHeader = (index, field, value) => {
+    setConnectionSettings(prev => ({
+      ...prev,
+      headers: prev.headers.map((header, i) => 
+        i === index ? { ...header, [field]: value } : header
+      )
+    }));
+  };
+
+  const buildCustomUrl = () => {
+    const { protocol, host, port, path } = connectionSettings;
+    const portPart = port ? `:${port}` : '';
+    return `${protocol}://${host}${portPart}${path}`;
   };
 
   const handlePredict = async () => {
@@ -49,15 +132,19 @@ const InferenceTest = () => {
       setLoading(true);
       setResponse(null);
 
-      const result = await api.predict(selectedModel, parsedInput);
+      // Always use server-side inference (from management container)
+      // This ensures requests come from within the cluster
+      const result = await api.predict(selectedModel, parsedInput, connectionSettings.useCustom ? connectionSettings : null);
       setResponse(result.data);
+      
       toast.success('Prediction completed successfully');
     } catch (error) {
       if (error.name === 'SyntaxError') {
         toast.error('Invalid JSON input');
       } else {
-        const errorMessage = error.response?.data?.error || 'Prediction failed';
+        const errorMessage = error.response?.data?.error || error.message || 'Prediction failed';
         toast.error(errorMessage);
+        console.error('Prediction error details:', error);
       }
       console.error('Error making prediction:', error);
     } finally {
@@ -176,9 +263,153 @@ const InferenceTest = () => {
                 >
                   Clear
                 </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setShowConnectionSettings(!showConnectionSettings)}
+                >
+                  <Settings size={14} />
+                  Connection
+                </button>
               </div>
             </div>
           </div>
+
+          {/* Connection Settings */}
+          {showConnectionSettings && (
+            <div className="card" style={{ marginBottom: '1.5rem', padding: '1rem', backgroundColor: '#f8fafc' }}>
+              <h3 style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Globe size={18} />
+                Connection Settings
+              </h3>
+              
+              <div className="form-group">
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={connectionSettings.useCustom}
+                    onChange={(e) => setConnectionSettings(prev => ({ ...prev, useCustom: e.target.checked }))}
+                  />
+                  Use custom connection settings
+                </label>
+                <small style={{ color: '#6b7280' }}>
+                  When enabled, the management container will use these custom settings instead of auto-detected model URLs
+                </small>
+              </div>
+
+              {connectionSettings.useCustom && (
+                <>
+                  <div className="grid grid-2">
+                    <div className="form-group">
+                      <label className="form-label">Protocol</label>
+                      <select
+                        value={connectionSettings.protocol}
+                        onChange={(e) => setConnectionSettings(prev => ({ ...prev, protocol: e.target.value }))}
+                        className="form-select"
+                      >
+                        <option value="http">HTTP</option>
+                        <option value="https">HTTPS</option>
+                      </select>
+                    </div>
+                    
+                    <div className="form-group">
+                      <label className="form-label">Host</label>
+                      <input
+                        type="text"
+                        value={connectionSettings.host}
+                        onChange={(e) => setConnectionSettings(prev => ({ ...prev, host: e.target.value }))}
+                        className="form-input"
+                        placeholder="localhost or model-host.example.com"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-2">
+                    <div className="form-group">
+                      <label className="form-label">Port</label>
+                      <input
+                        type="text"
+                        value={connectionSettings.port}
+                        onChange={(e) => setConnectionSettings(prev => ({ ...prev, port: e.target.value }))}
+                        className="form-input"
+                        placeholder="8080"
+                      />
+                    </div>
+                    
+                    <div className="form-group">
+                      <label className="form-label">Path</label>
+                      <input
+                        type="text"
+                        value={connectionSettings.path}
+                        onChange={(e) => setConnectionSettings(prev => ({ ...prev, path: e.target.value }))}
+                        className="form-input"
+                        placeholder="/v1/models/model-name:predict"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="form-group">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <label className="form-label">Headers</label>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={addHeader}
+                      >
+                        <Plus size={14} />
+                        Add Header
+                      </button>
+                    </div>
+                    
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      {connectionSettings.headers.map((header, index) => (
+                        <div key={index} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                          <input
+                            type="text"
+                            value={header.key}
+                            onChange={(e) => updateHeader(index, 'key', e.target.value)}
+                            className="form-input"
+                            placeholder="Header name"
+                            style={{ flex: 1 }}
+                          />
+                          <input
+                            type="text"
+                            value={header.value}
+                            onChange={(e) => updateHeader(index, 'value', e.target.value)}
+                            className="form-input"
+                            placeholder="Header value"
+                            style={{ flex: 2 }}
+                          />
+                          <button
+                            type="button"
+                            className="btn btn-danger btn-sm"
+                            onClick={() => removeHeader(index)}
+                            disabled={connectionSettings.headers.length === 1}
+                          >
+                            <Minus size={14} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Full URL Preview</label>
+                    <div style={{ 
+                      padding: '0.75rem', 
+                      backgroundColor: '#e5e7eb', 
+                      borderRadius: '6px',
+                      fontFamily: 'monospace',
+                      fontSize: '0.875rem',
+                      wordBreak: 'break-all'
+                    }}>
+                      {buildCustomUrl()}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
 
           <div className="form-group">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

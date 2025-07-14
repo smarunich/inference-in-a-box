@@ -39,6 +39,7 @@ export const ApiProvider = ({ children }) => {
     // Authentication
     getTokens: () => api.get('/tokens'),
     getTenantInfo: () => api.get('/tenant'),
+    adminLogin: (credentials) => api.post('/admin/login', credentials),
     
     // Models
     getModels: () => api.get('/models'),
@@ -48,13 +49,21 @@ export const ApiProvider = ({ children }) => {
     deleteModel: (name) => api.delete(`/models/${name}`),
     
     // Inference
-    predict: (modelName, data) => api.post(`/models/${modelName}/predict`, data),
+    predict: (modelName, inputData, connectionSettings = null) => 
+      api.post(`/models/${modelName}/predict`, { inputData, connectionSettings }),
     
     // Monitoring
     getModelLogs: (modelName, lines = 100) => api.get(`/models/${modelName}/logs?lines=${lines}`),
     
     // Frameworks
     getFrameworks: () => api.get('/frameworks'),
+    
+    // Admin endpoints
+    getSystemInfo: () => api.get('/admin/system'),
+    getTenants: () => api.get('/admin/tenants'),
+    getResources: () => api.get('/admin/resources'),
+    getAdminLogs: (params = {}) => api.get('/admin/logs', { params }),
+    executeKubectl: (command) => api.post('/admin/kubectl', { command }),
   };
 
   return (

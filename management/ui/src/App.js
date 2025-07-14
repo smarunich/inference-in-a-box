@@ -7,7 +7,28 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ApiProvider } from './contexts/ApiContext';
 
 function AppContent() {
-  const { token, user } = useAuth();
+  const { token, user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        height: '100vh',
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+      }}>
+        <div style={{ 
+          background: 'white', 
+          padding: '2rem', 
+          borderRadius: '8px',
+          textAlign: 'center'
+        }}>
+          Loading...
+        </div>
+      </div>
+    );
+  }
 
   if (!token) {
     return <Login />;

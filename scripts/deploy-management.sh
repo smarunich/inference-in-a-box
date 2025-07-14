@@ -2,7 +2,7 @@
 
 set -e
 
-echo "🚀 Deploying Consolidated Management Service..."
+echo "🚀 Deploying Management Service (Backend + React frontend)..."
 
 # Configuration
 PROJECT_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -31,16 +31,7 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# Check deployment type
-DEPLOYMENT_TYPE=${1:-"configmap"}
-
-if [[ "$DEPLOYMENT_TYPE" == "registry" ]]; then
-    DEPLOYMENT_FILE="$CONFIGS_DIR/management-registry.yaml"
-    print_status "Using registry-based deployment"
-else
-    DEPLOYMENT_FILE="$CONFIGS_DIR/management.yaml"
-    print_status "Using ConfigMap-based deployment"
-fi
+DEPLOYMENT_FILE="$CONFIGS_DIR/management.yaml"
 
 # Check if deployment file exists
 if [ ! -f "$DEPLOYMENT_FILE" ]; then

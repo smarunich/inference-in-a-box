@@ -2,7 +2,7 @@
 
 set -e
 
-echo "🏗️  Building Consolidated Management Service..."
+echo "🏗️  Building Management Service (Backend + React frontend)..."
 
 # Configuration
 PROJECT_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -46,38 +46,14 @@ fi
 
 print_status "Connected to Kubernetes cluster"
 
-# Build UI source ConfigMap
-print_status "Building UI source ConfigMap..."
-cd "$MANAGEMENT_DIR/ui"
-
-# Create UI source files data
-UI_SOURCE_DATA=""
-for file in src/App.js src/index.js src/index.css src/components/*.js src/contexts/*.js public/index.html public/manifest.json; do
-    if [ -f "$file" ]; then
-        filename=$(basename "$file")
-        dirname=$(dirname "$file")
-        # Create directory structure in ConfigMap
-        if [ "$dirname" != "." ]; then
-            key="${dirname}/${filename}"
-        else
-            key="$filename"
-        fi
-        UI_SOURCE_DATA="$UI_SOURCE_DATA  ${key}: |\n$(sed 's/^/    /' "$file")\n"
-    fi
-done
-
-# Update the ConfigMap with UI source files
-print_status "Updating ConfigMap with UI source files..."
-kubectl create configmap management-ui-source \
-    --from-file=package.json \
-    --from-file=src/ \
-    --from-file=public/ \
-    --dry-run=client -o yaml | kubectl apply -f -
+# Note: ConfigMap-based deployment is deprecated in favor of registry-based deployment
+# The backend is now built as a Docker image and deployed via registry
+print_status "Skipping ConfigMap build - using registry-based deployment..."
 
 cd "$PROJECT_ROOT"
 
-# Apply the management deployment
-print_status "Deploying consolidated management service..."
+# Apply the management deployment (registry-based)
+print_status "Deploying management service with backend..."
 kubectl apply -f "$CONFIGS_DIR/management.yaml"
 
 # Wait for deployment to be ready

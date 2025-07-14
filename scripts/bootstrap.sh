@@ -510,7 +510,7 @@ deploy_management_services() {
     
     # Deploy Management Service (consolidated)
     log "Deploying Management Service..."
-    kubectl apply -f ${PROJECT_DIR}/configs/management/management-registry.yaml
+    kubectl apply -f ${PROJECT_DIR}/configs/management/management.yaml
     
     # Wait for Management Service to be ready
     log "Waiting for Management Service to be ready..."
