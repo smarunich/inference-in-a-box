@@ -12,7 +12,6 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
@@ -280,25 +279,143 @@ func (k *K8sClient) GetServices(namespace string) ([]corev1.Service, error) {
 	return services.Items, nil
 }
 
-// GetIngresses retrieves ingresses
-func (k *K8sClient) GetIngresses(namespace string) ([]networkingv1.Ingress, error) {
+
+// GetGateways retrieves Gateway API gateways
+func (k *K8sClient) GetGateways(namespace string) ([]map[string]interface{}, error) {
 	ctx := context.Background()
 	
-	var ingresses *networkingv1.IngressList
-	var err error
+	// Gateway API Gateway GVR
+	gatewayGVR := schema.GroupVersionResource{
+		Group:    "gateway.networking.k8s.io",
+		Version:  "v1",
+		Resource: "gateways",
+	}
+	
+	var result []map[string]interface{}
 	
 	if namespace == "" {
-		ingresses, err = k.clientset.NetworkingV1().Ingresses("").List(ctx, metav1.ListOptions{})
+		list, err := k.dynamicClient.Resource(gatewayGVR).List(ctx, metav1.ListOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to list gateways: %w", err)
+		}
+		for _, item := range list.Items {
+			result = append(result, item.Object)
+		}
 	} else {
-		ingresses, err = k.clientset.NetworkingV1().Ingresses(namespace).List(ctx, metav1.ListOptions{})
+		list, err := k.dynamicClient.Resource(gatewayGVR).Namespace(namespace).List(ctx, metav1.ListOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to list gateways in namespace %s: %w", namespace, err)
+		}
+		for _, item := range list.Items {
+			result = append(result, item.Object)
+		}
 	}
 	
-	if err != nil {
-		return nil, fmt.Errorf("failed to list ingresses: %w", err)
-	}
-	
-	return ingresses.Items, nil
+	return result, nil
 }
+
+// GetHTTPRoutes retrieves Gateway API HTTPRoutes
+func (k *K8sClient) GetHTTPRoutes(namespace string) ([]map[string]interface{}, error) {
+	ctx := context.Background()
+	
+	// Gateway API HTTPRoute GVR
+	httpRouteGVR := schema.GroupVersionResource{
+		Group:    "gateway.networking.k8s.io",
+		Version:  "v1",
+		Resource: "httproutes",
+	}
+	
+	var result []map[string]interface{}
+	
+	if namespace == "" {
+		list, err := k.dynamicClient.Resource(httpRouteGVR).List(ctx, metav1.ListOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to list httproutes: %w", err)
+		}
+		for _, item := range list.Items {
+			result = append(result, item.Object)
+		}
+	} else {
+		list, err := k.dynamicClient.Resource(httpRouteGVR).Namespace(namespace).List(ctx, metav1.ListOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to list httproutes in namespace %s: %w", namespace, err)
+		}
+		for _, item := range list.Items {
+			result = append(result, item.Object)
+		}
+	}
+	
+	return result, nil
+}
+
+// GetVirtualServices retrieves Istio VirtualServices
+func (k *K8sClient) GetVirtualServices(namespace string) ([]map[string]interface{}, error) {
+	ctx := context.Background()
+	
+	// Istio VirtualService GVR
+	virtualServiceGVR := schema.GroupVersionResource{
+		Group:    "networking.istio.io",
+		Version:  "v1beta1",
+		Resource: "virtualservices",
+	}
+	
+	var result []map[string]interface{}
+	
+	if namespace == "" {
+		list, err := k.dynamicClient.Resource(virtualServiceGVR).List(ctx, metav1.ListOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to list virtualservices: %w", err)
+		}
+		for _, item := range list.Items {
+			result = append(result, item.Object)
+		}
+	} else {
+		list, err := k.dynamicClient.Resource(virtualServiceGVR).Namespace(namespace).List(ctx, metav1.ListOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to list virtualservices in namespace %s: %w", namespace, err)
+		}
+		for _, item := range list.Items {
+			result = append(result, item.Object)
+		}
+	}
+	
+	return result, nil
+}
+
+// GetIstioGateways retrieves Istio Gateways
+func (k *K8sClient) GetIstioGateways(namespace string) ([]map[string]interface{}, error) {
+	ctx := context.Background()
+	
+	// Istio Gateway GVR
+	istioGatewayGVR := schema.GroupVersionResource{
+		Group:    "networking.istio.io",
+		Version:  "v1beta1",
+		Resource: "gateways",
+	}
+	
+	var result []map[string]interface{}
+	
+	if namespace == "" {
+		list, err := k.dynamicClient.Resource(istioGatewayGVR).List(ctx, metav1.ListOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to list istio gateways: %w", err)
+		}
+		for _, item := range list.Items {
+			result = append(result, item.Object)
+		}
+	} else {
+		list, err := k.dynamicClient.Resource(istioGatewayGVR).Namespace(namespace).List(ctx, metav1.ListOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to list istio gateways in namespace %s: %w", namespace, err)
+		}
+		for _, item := range list.Items {
+			result = append(result, item.Object)
+		}
+	}
+	
+	return result, nil
+}
+
 
 // ExecuteKubectlCommand executes a kubectl command (admin only)
 func (k *K8sClient) ExecuteKubectlCommand(command string) (string, error) {

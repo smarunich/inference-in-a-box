@@ -210,9 +210,12 @@ type AdminTenantsResponse struct {
 
 // AdminResourcesResponse represents admin resources response
 type AdminResourcesResponse struct {
-	Pods      []PodInfo      `json:"pods"`
-	Services  []ServiceInfo  `json:"services"`
-	Ingresses []IngressInfo  `json:"ingresses"`
+	Pods             []PodInfo             `json:"pods"`
+	Services         []ServiceInfo         `json:"services"`
+	Gateways         []GatewayInfo         `json:"gateways"`
+	HTTPRoutes       []HTTPRouteInfo       `json:"httpRoutes"`
+	VirtualServices  []VirtualServiceInfo  `json:"virtualServices"`
+	IstioGateways    []IstioGatewayInfo    `json:"istioGateways"`
 }
 
 // PodInfo represents pod information
@@ -234,13 +237,43 @@ type ServiceInfo struct {
 	Ports     []map[string]interface{} `json:"ports"`
 }
 
-// IngressInfo represents ingress information
-type IngressInfo struct {
+// GatewayInfo represents Gateway API gateway information
+type GatewayInfo struct {
+	Name       string    `json:"name"`
+	Namespace  string    `json:"namespace"`
+	GatewayClass string  `json:"gatewayClass"`
+	Listeners  []string  `json:"listeners"`
+	Addresses  []string  `json:"addresses"`
+	CreatedAt  time.Time `json:"created"`
+}
+
+// HTTPRouteInfo represents Gateway API HTTPRoute information
+type HTTPRouteInfo struct {
+	Name      string    `json:"name"`
+	Namespace string    `json:"namespace"`
+	Hostnames []string  `json:"hostnames"`
+	ParentRefs []string `json:"parentRefs"`
+	CreatedAt time.Time `json:"created"`
+}
+
+// VirtualServiceInfo represents Istio VirtualService information
+type VirtualServiceInfo struct {
 	Name      string    `json:"name"`
 	Namespace string    `json:"namespace"`
 	Hosts     []string  `json:"hosts"`
+	Gateways  []string  `json:"gateways"`
 	CreatedAt time.Time `json:"created"`
 }
+
+// IstioGatewayInfo represents Istio Gateway information
+type IstioGatewayInfo struct {
+	Name      string    `json:"name"`
+	Namespace string    `json:"namespace"`
+	Servers   []string  `json:"servers"`
+	Selector  map[string]string `json:"selector"`
+	CreatedAt time.Time `json:"created"`
+}
+
 
 // KubectlRequest represents kubectl command request
 type KubectlRequest struct {

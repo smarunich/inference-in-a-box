@@ -13,10 +13,16 @@ rules:
   resources: ["inferenceservices"]
   verbs: ["get", "list", "create", "update", "patch", "delete"]
 - apiGroups: [""]
-  resources: ["pods", "pods/log"]
+  resources: ["pods", "pods/log", "nodes", "namespaces", "services"]
   verbs: ["get", "list"]
 - apiGroups: ["apps"]
   resources: ["deployments"]
+  verbs: ["get", "list"]
+- apiGroups: ["gateway.networking.k8s.io"]
+  resources: ["gateways", "httproutes", "gatewayclasses"]
+  verbs: ["get", "list"]
+- apiGroups: ["networking.istio.io"]
+  resources: ["virtualservices", "gateways"]
   verbs: ["get", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -72,6 +78,8 @@ spec:
           value: "8080"
         - name: NODE_ENV
           value: "production"
+        - name: LOG_LEVEL
+          value: "DEBUG"
         - name: SUPER_ADMIN_USERNAME
           value: "admin"
         - name: SUPER_ADMIN_PASSWORD
