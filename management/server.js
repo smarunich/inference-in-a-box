@@ -204,15 +204,73 @@ app.get('/api/models', authenticateToken, async (req, res) => {
         status = 'True';
       }
       
+      // Extract detailed status information
+      const statusDetails = {
+        ready: ready,
+        phase: status,
+        url: model.status?.url,
+        observedGeneration: model.status?.observedGeneration,
+        conditions: conditions.map(condition => ({
+          type: condition.type,
+          status: condition.status,
+          reason: condition.reason,
+          message: condition.message,
+          lastTransitionTime: condition.lastTransitionTime
+        })),
+        // Component statuses
+        components: {
+          predictor: {
+            ready: conditions.find(c => c.type === 'PredictorReady')?.status === 'True',
+            url: model.status?.components?.predictor?.url,
+            traffic: model.status?.components?.predictor?.traffic
+          },
+          transformer: model.status?.components?.transformer ? {
+            ready: conditions.find(c => c.type === 'TransformerReady')?.status === 'True',
+            url: model.status?.components?.transformer?.url,
+            traffic: model.status?.components?.transformer?.traffic
+          } : null,
+          explainer: model.status?.components?.explainer ? {
+            ready: conditions.find(c => c.type === 'ExplainerReady')?.status === 'True',
+            url: model.status?.components?.explainer?.url,
+            traffic: model.status?.components?.explainer?.traffic
+          } : null
+        },
+        // Resource information
+        modelCopies: model.status?.modelCopies,
+        replicas: {
+          desired: model.spec?.predictor?.maxReplicas || 0,
+          ready: model.status?.replicas?.ready || 0,
+          total: model.status?.replicas?.total || 0
+        },
+        // Traffic and routing
+        traffic: model.status?.traffic,
+        address: model.status?.address,
+        // Deployment progress
+        latestCreatedRevision: model.status?.latestCreatedRevision,
+        latestReadyRevision: model.status?.latestReadyRevision,
+        // Error information
+        error: conditions.find(c => c.status === 'False')?.message
+      };
+
       const processedModel = {
         name: model.metadata.name,
         namespace: model.metadata.namespace,
+        // Basic fields (backward compatibility)
         status: status,
         ready: ready,
         url: model.status?.url,
         predictor: model.spec.predictor,
         createdAt: model.metadata.creationTimestamp,
-        conditions: conditions // Include conditions for debugging
+        // Detailed status information
+        statusDetails: statusDetails,
+        // Metadata
+        metadata: {
+          labels: model.metadata.labels,
+          annotations: model.metadata.annotations,
+          generation: model.metadata.generation,
+          resourceVersion: model.metadata.resourceVersion,
+          uid: model.metadata.uid
+        }
       };
       
       console.log(`API - Processed model ${model.metadata.name}:`, {
@@ -268,15 +326,76 @@ app.get('/api/models/:modelName', authenticateToken, async (req, res) => {
       status = 'True';
     }
     
+    // Extract detailed status information  
+    const statusDetails = {
+      ready: ready,
+      phase: status,
+      url: model.status?.url,
+      observedGeneration: model.status?.observedGeneration,
+      conditions: conditions.map(condition => ({
+        type: condition.type,
+        status: condition.status,
+        reason: condition.reason,
+        message: condition.message,
+        lastTransitionTime: condition.lastTransitionTime
+      })),
+      // Component statuses
+      components: {
+        predictor: {
+          ready: conditions.find(c => c.type === 'PredictorReady')?.status === 'True',
+          url: model.status?.components?.predictor?.url,
+          traffic: model.status?.components?.predictor?.traffic
+        },
+        transformer: model.status?.components?.transformer ? {
+          ready: conditions.find(c => c.type === 'TransformerReady')?.status === 'True',
+          url: model.status?.components?.transformer?.url,
+          traffic: model.status?.components?.transformer?.traffic
+        } : null,
+        explainer: model.status?.components?.explainer ? {
+          ready: conditions.find(c => c.type === 'ExplainerReady')?.status === 'True',
+          url: model.status?.components?.explainer?.url,
+          traffic: model.status?.components?.explainer?.traffic
+        } : null
+      },
+      // Resource information
+      modelCopies: model.status?.modelCopies,
+      replicas: {
+        desired: model.spec?.predictor?.maxReplicas || 0,
+        ready: model.status?.replicas?.ready || 0,
+        total: model.status?.replicas?.total || 0
+      },
+      // Traffic and routing
+      traffic: model.status?.traffic,
+      address: model.status?.address,
+      // Deployment progress
+      latestCreatedRevision: model.status?.latestCreatedRevision,
+      latestReadyRevision: model.status?.latestReadyRevision,
+      // Error information
+      error: conditions.find(c => c.status === 'False')?.message
+    };
+
     const modelInfo = {
       name: model.metadata.name,
       namespace: model.metadata.namespace,
+      // Basic fields (backward compatibility)
       status: status,
       ready: ready,
       url: model.status?.url,
       predictor: model.spec.predictor,
       createdAt: model.metadata.creationTimestamp,
-      conditions: conditions
+      // Detailed status information
+      statusDetails: statusDetails,
+      // Full spec and status for detailed view
+      spec: model.spec,
+      fullStatus: model.status,
+      // Metadata
+      metadata: {
+        labels: model.metadata.labels,
+        annotations: model.metadata.annotations,
+        generation: model.metadata.generation,
+        resourceVersion: model.metadata.resourceVersion,
+        uid: model.metadata.uid
+      }
     };
 
     res.json(modelInfo);
@@ -402,32 +521,62 @@ app.delete('/api/models/:modelName', authenticateToken, async (req, res) => {
   }
 });
 
-// Inference endpoint (proxy to model)
+// Inference endpoint (proxy to model) - enhanced with custom connection support
 app.post('/api/models/:modelName/predict', authenticateToken, async (req, res) => {
   try {
-    const tenant = req.user.tenant;
-    const modelName = req.params.modelName;
-    const inputData = req.body;
-
-    // Get model URL
-    const getCommand = `kubectl get inferenceservice ${modelName} -n ${tenant} -o jsonpath='{.status.url}'`;
-    const modelUrl = await execCommand(getCommand);
-
-    if (!modelUrl) {
-      return res.status(404).json({ error: 'Model not ready or not found' });
-    }
-
-    // Make prediction request
-    const curlCommand = `curl -s -X POST ${modelUrl}/v1/models/${modelName}:predict \
-      -H "Content-Type: application/json" \
-      -H "Authorization: Bearer ${req.headers.authorization.split(' ')[1]}" \
-      -d '${JSON.stringify(inputData)}'`;
+    const { inputData, connectionSettings } = req.body;
+    let modelUrl;
+    let modelName = req.params.modelName;
     
-    const result = await execCommand(curlCommand);
-    const prediction = JSON.parse(result);
+    if (connectionSettings && connectionSettings.useCustom) {
+      // Use custom connection settings
+      const { protocol, host, port, path } = connectionSettings;
+      const portPart = port ? `:${port}` : '';
+      modelUrl = `${protocol}://${host}${portPart}`;
+      const fullPath = path || `/v1/models/${modelName}:predict`;
+      
+      // Build headers for curl command
+      let headersStr = '-H "Content-Type: application/json"';
+      if (connectionSettings.headers) {
+        connectionSettings.headers.forEach(header => {
+          if (header.key && header.value) {
+            headersStr += ` -H "${header.key}: ${header.value}"`;
+          }
+        });
+      }
+      
+      const curlCommand = `curl -s -X POST ${modelUrl}${fullPath} ${headersStr} -d '${JSON.stringify(inputData)}'`;
+      console.log('Making custom inference request:', curlCommand);
+      
+      const result = await execCommand(curlCommand);
+      const prediction = JSON.parse(result);
+      res.json(prediction);
+      
+    } else {
+      // Default behavior - get model URL from InferenceService
+      const tenant = req.user.isAdmin ? 
+        (connectionSettings?.namespace || req.user.tenant) : 
+        req.user.tenant;
+        
+      const getCommand = `kubectl get inferenceservice ${modelName} -n ${tenant} -o jsonpath='{.status.url}'`;
+      modelUrl = await execCommand(getCommand);
 
-    res.json(prediction);
+      if (!modelUrl) {
+        return res.status(404).json({ error: 'Model not ready or not found' });
+      }
+
+      // Make prediction request from container
+      const curlCommand = `curl -s -X POST ${modelUrl}/v1/models/${modelName}:predict \
+        -H "Content-Type: application/json" \
+        -d '${JSON.stringify(inputData)}'`;
+      
+      console.log('Making default inference request:', curlCommand);
+      const result = await execCommand(curlCommand);
+      const prediction = JSON.parse(result);
+      res.json(prediction);
+    }
   } catch (error) {
+    console.error('Inference error:', error);
     res.status(500).json({ error: 'Failed to make prediction', details: error.message });
   }
 });

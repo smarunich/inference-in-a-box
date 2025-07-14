@@ -49,7 +49,8 @@ export const ApiProvider = ({ children }) => {
     deleteModel: (name) => api.delete(`/models/${name}`),
     
     // Inference
-    predict: (modelName, data) => api.post(`/models/${modelName}/predict`, data),
+    predict: (modelName, inputData, connectionSettings = null) => 
+      api.post(`/models/${modelName}/predict`, { inputData, connectionSettings }),
     
     // Monitoring
     getModelLogs: (modelName, lines = 100) => api.get(`/models/${modelName}/logs?lines=${lines}`),
