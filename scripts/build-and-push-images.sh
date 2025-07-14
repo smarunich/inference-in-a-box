@@ -80,9 +80,9 @@ configure_docker() {
     print_success "Docker configured for Artifact Registry"
 }
 
-# Build Management Service Docker image (consolidated)
+# Build Management Service Docker image (Backend + React frontend)
 build_management_service() {
-    print_step "Building Management Service Docker image (multi-arch)"
+    print_step "Building Management Service Docker image (multi-arch) with backend"
     
     # Build multi-architecture image
     docker buildx build \
@@ -91,7 +91,7 @@ build_management_service() {
         --push \
         "$PROJECT_ROOT/management/"
     
-    print_success "Management Service multi-arch image built and pushed"
+    print_success "Management Service multi-arch image built and pushed (Backend)"
 }
 
 # Push images to registry (already done in buildx)
@@ -105,8 +105,8 @@ update_manifests() {
     print_step "Updating Kubernetes manifests"
     
     # Update Management Service deployment
-    sed -i.bak "s|image: node:18-alpine|image: $REGISTRY/management-service:$TAG|g" \
-        "$PROJECT_ROOT/configs/management/management-registry.yaml"
+    sed -i.bak "s|image: us-east1-docker.pkg.dev/dogfood-cx/registryrepository/management-service:latest|image: $REGISTRY/management-service:$TAG|g" \
+        "$PROJECT_ROOT/configs/management/management.yaml"
     
     print_success "Kubernetes manifests updated"
 }
@@ -116,12 +116,14 @@ show_image_info() {
     print_step "Image Information"
     
     echo "Built multi-arch images:"
-    echo "  Management Service: $REGISTRY/management-service:$TAG"
+    echo "  Management Service (Backend): $REGISTRY/management-service:$TAG"
     
     echo -e "\nArchitectures: linux/amd64, linux/arm64"
+    echo -e "\nBackend: High-performance compiled backend"
+    echo -e "\nFrontend: React 18 (unchanged)"
     
     echo -e "\nTo deploy using these images:"
-    echo "kubectl apply -f $PROJECT_ROOT/configs/management/management-registry.yaml"
+    echo "kubectl apply -f $PROJECT_ROOT/configs/management/management.yaml"
     
     echo -e "\nTo inspect multi-arch manifest:"
     echo "docker buildx imagetools inspect $REGISTRY/management-service:$TAG"

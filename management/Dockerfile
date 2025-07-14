@@ -1,4 +1,4 @@
-# Multi-stage Docker build for consolidated management service
+# Multi-stage Docker build for Go backend + React frontend
 # Stage 1: Build React frontend
 FROM node:18-alpine AS ui-build
 
@@ -15,11 +15,30 @@ COPY ui/ ./
 # Build React app
 RUN npm run build
 
-# Stage 2: Setup Node.js backend and serve static files
-FROM node:18-alpine AS production
+# Stage 2: Build Go backend
+FROM golang:1.21-alpine AS go-build
 
-# Install kubectl (required for Kubernetes operations)
-RUN apk add --no-cache curl && \
+# Install dependencies
+RUN apk add --no-cache git
+
+# Set working directory
+WORKDIR /app
+
+# Copy Go modules
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy Go source code
+COPY *.go ./
+
+# Build Go binary
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o management-service .
+
+# Stage 3: Final runtime image
+FROM alpine:latest
+
+# Install kubectl and curl (required for Kubernetes operations)
+RUN apk add --no-cache curl ca-certificates && \
     curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && \
     chmod +x kubectl && \
     mv kubectl /usr/local/bin/
@@ -27,23 +46,21 @@ RUN apk add --no-cache curl && \
 # Create app directory
 WORKDIR /app
 
-# Copy backend package files
-COPY package*.json ./
-RUN npm install
+# Copy Go binary from build stage
+COPY --from=go-build /app/management-service .
 
-# Copy backend source code
-COPY server.js ./
-
-# Copy built React app from previous stage
+# Copy built React app from UI build stage
 COPY --from=ui-build /app/ui/build ./ui/build
 
 # Create non-root user for security
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodejs -u 1001
+RUN addgroup -g 1001 -S appuser && \
+    adduser -S appuser -u 1001 -G appuser
 
 # Change ownership of the app directory
-RUN chown -R nodejs:nodejs /app
-USER nodejs
+RUN chown -R appuser:appuser /app
+
+# Switch to non-root user
+USER appuser
 
 # Expose port
 EXPOSE 8080
@@ -52,5 +69,5 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:8080/health || exit 1
 
-# Start the server
-CMD ["node", "server.js"]
+# Start the Go server
+CMD ["./management-service"]

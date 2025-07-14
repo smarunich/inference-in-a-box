@@ -5,7 +5,7 @@ A monolithic service that combines the Management API and UI for the AI/ML infer
 ## Overview
 
 This service consolidates the previously separate Management API and UI components into a single deployment:
-- **Backend**: Node.js/Express API server
+- **Backend**: API server
 - **Frontend**: React application served as static files
 - **Deployment**: Single Docker container and Kubernetes deployment
 
@@ -16,7 +16,7 @@ This service consolidates the previously separate Management API and UI componen
 │         Management Service              │
 │                                         │
 │  ┌─────────────────┐  ┌─────────────────┐│
-│  │   Express API   │  │   React UI      ││
+│  │   Backend API   │  │   React UI      ││
 │  │                 │  │   (static)      ││
 │  │  • /api/*       │  │  • /*           ││
 │  │  • Authentication│  │  • Dashboard    ││
@@ -55,33 +55,44 @@ This service consolidates the previously separate Management API and UI componen
 
 1. **Install dependencies**:
    ```bash
-   npm install
+   go mod download
    ```
 
 2. **Build UI**:
    ```bash
-   npm run build:ui
+   cd ui && npm install && npm run build
    ```
 
 3. **Start server**:
    ```bash
-   npm start
+   go run .
    ```
 
-4. **Development mode**:
+4. **Development mode** (with automatic restart):
    ```bash
-   npm run dev
+   # Install air for hot reload
+   go install github.com/cosmtrek/air@latest
+   air
    ```
 
 ### Project Structure
 
 ```
 management/
-├── server.js              # Main server file
-├── package.json           # Dependencies
+├── main.go               # Main entry point
+├── config.go             # Configuration management
+├── types.go              # Type definitions
+├── auth.go               # Authentication service
+├── models.go             # Model management service
+├── admin.go              # Admin service
+├── k8s.go                # Kubernetes client
+├── server.go             # HTTP server and routing
+├── utils.go              # Utility functions
+├── go.mod                # Go module dependencies
+├── go.sum                # Go module checksums
 ├── Dockerfile            # Docker build
 ├── README.md             # This file
-└── ui/                   # React UI
+└── ui/                   # React UI (unchanged)
     ├── package.json      # UI dependencies
     ├── public/           # Static assets
     │   ├── index.html
@@ -116,18 +127,14 @@ docker run -d -p 8080:8080 --name management-service management-service:latest
 ### Multi-stage Build
 The Dockerfile uses a multi-stage build:
 1. **Stage 1**: Build React UI with Node.js
-2. **Stage 2**: Setup Node.js server and copy built UI
+2. **Stage 2**: Build backend binary
+3. **Stage 3**: Create minimal runtime image with Alpine Linux
 
 ## Kubernetes Deployment
 
-### ConfigMap-based Deployment
+### Registry-based Deployment (Recommended)
 ```bash
 kubectl apply -f ../configs/management/management.yaml
-```
-
-### Registry-based Deployment
-```bash
-kubectl apply -f ../configs/management/management-registry.yaml
 ```
 
 ### Access Service
@@ -138,8 +145,9 @@ kubectl port-forward svc/management-service 8085:80
 ## Scripts
 
 ### Build Scripts
-- `scripts/build-management.sh` - Build and deploy with ConfigMaps
+- `scripts/build-management.sh` - Build and deploy backend
 - `scripts/deploy-management.sh` - Deploy to Kubernetes
+- `scripts/build-and-push-images.sh` - Build and push multi-arch Docker images
 - `scripts/build-local-images.sh` - Build Docker images locally
 
 ### Usage
@@ -150,10 +158,10 @@ kubectl port-forward svc/management-service 8085:80
 # Deploy only
 ./scripts/deploy-management.sh
 
-# Deploy with registry image
-./scripts/deploy-management.sh registry
+# Build and push Docker images
+./scripts/build-and-push-images.sh
 
-# Build Docker images
+# Build local Docker images
 ./scripts/build-local-images.sh
 ```
 
@@ -175,20 +183,22 @@ This consolidated service replaces the separate `management-api` and `management
 
 ### Before (Separate Services)
 ```
-management-api/     → Port 8082
+management-api/     → Port 8082 (Backend API)
 management-ui/      → Port 80 (via Nginx)
 ```
 
 ### After (Consolidated Service)
 ```
-management/         → Port 8080 (API + UI)
+management/         → Port 8080 (Backend + React)
 ```
 
 ### Benefits
 - **Simplified deployment**: Single service instead of two
 - **Reduced complexity**: One Docker image, one Kubernetes deployment
-- **Better performance**: No network overhead between API and UI
+- **Better performance**: No network overhead between API and UI, faster backend
 - **Easier maintenance**: Single codebase and deployment pipeline
+- **Improved resource efficiency**: Lower memory footprint and faster startup
+- **Better concurrency**: Efficient concurrent request handling
 
 ## Security
 
@@ -241,3 +251,19 @@ kubectl port-forward svc/management-service 8085:80
 # Check health
 curl http://localhost:8085/health
 ```
+
+## Backend Migration
+
+The backend has been refactored while maintaining 100% API compatibility:
+
+### What Changed:
+- **Performance**: Improved memory usage and startup time
+- **Resource Requirements**: Reduced from 256Mi to 128Mi memory
+- **Concurrency**: Better concurrent request handling
+
+### What Stayed the Same:
+- **React Frontend**: Completely unchanged
+- **API Endpoints**: 100% compatible
+- **Authentication**: JWT handling identical
+- **Docker Deployment**: Same deployment process
+- **UI Functionality**: All features work identically

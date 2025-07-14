@@ -1,20 +1,17 @@
 {
-  "name": "inference-management",
+  "name": "inference-management-ui",
   "version": "1.0.0",
-  "description": "Consolidated Management API and UI for AI/ML inference platform",
-  "main": "server.js",
+  "description": "React UI for AI/ML inference platform (Go backend)",
+  "main": "ui/src/index.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js",
-    "build": "npm run build:ui",
+    "build": "cd ui && npm install && npm run build",
     "build:ui": "cd ui && npm install && npm run build",
-    "test": "npm run test:ui",
-    "test:ui": "cd ui && npm test"
+    "test": "cd ui && npm test",
+    "test:ui": "cd ui && npm test",
+    "start:ui": "cd ui && npm start",
+    "dev:ui": "cd ui && npm start"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "jsonwebtoken": "^9.0.2",
-    "js-yaml": "^4.1.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.3.0",
@@ -25,12 +22,11 @@
     "lucide-react": "^0.263.1"
   },
   "devDependencies": {
-    "nodemon": "^3.0.1",
     "@testing-library/jest-dom": "^5.16.4",
     "@testing-library/react": "^13.3.0",
     "@testing-library/user-event": "^13.5.0"
   },
-  "keywords": ["kubernetes", "kserve", "ai", "ml", "inference", "management", "react"],
+  "keywords": ["kubernetes", "kserve", "ai", "ml", "inference", "management", "react", "go"],
   "author": "Inference-in-a-Box",
   "license": "MIT",
   "eslintConfig": {
