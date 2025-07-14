@@ -389,6 +389,283 @@ code {
   margin: 1rem 0;
 }
 
+/* Additional styles for admin features */
+.table-container {
+  overflow-x: auto;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.table-container .table {
+  margin-top: 0;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn:disabled:hover {
+  background: inherit;
+}
+
+/* Admin specific styles */
+.admin-indicator {
+  background: #fef3c7;
+  color: #92400e;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border: 1px solid #f59e0b;
+}
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.feature-card {
+  padding: 1rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+
+.feature-card:hover {
+  border-color: #667eea;
+  background: #f8fafc;
+}
+
+.feature-card.active {
+  border-color: #667eea;
+  background: #f0f9ff;
+}
+
+/* System status cards */
+.system-status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.system-status-card {
+  padding: 1.5rem;
+  border-radius: 8px;
+  text-align: center;
+  border: 1px solid #e2e8f0;
+}
+
+.system-status-card .metric {
+  font-size: 2rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.system-status-card .label {
+  font-size: 0.875rem;
+  opacity: 0.8;
+}
+
+/* Resource status indicators */
+.resource-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.resource-status.healthy {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.resource-status.unhealthy {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.resource-status.warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+/* Terminal/kubectl styles */
+.terminal-container {
+  background: #1a202c;
+  color: #e2e8f0;
+  border-radius: 8px;
+  padding: 1rem;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 0.875rem;
+}
+
+.terminal-prompt {
+  color: #48bb78;
+  font-weight: 500;
+}
+
+.terminal-output {
+  max-height: 400px;
+  overflow-y: auto;
+  margin-top: 1rem;
+  padding: 1rem;
+  background: #2d3748;
+  border-radius: 6px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+/* Log viewer styles */
+.log-viewer {
+  background: #1a202c;
+  color: #e2e8f0;
+  border-radius: 8px;
+  padding: 1rem;
+  max-height: 600px;
+  overflow-y: auto;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 0.875rem;
+}
+
+.log-line {
+  padding: 0.125rem 0;
+  border-bottom: 1px solid #2d3748;
+}
+
+.log-line:last-child {
+  border-bottom: none;
+}
+
+.log-line-number {
+  color: #718096;
+  font-size: 0.75rem;
+  margin-right: 1rem;
+  user-select: none;
+}
+
+.log-error {
+  color: #f56565;
+}
+
+.log-warning {
+  color: #ed8936;
+}
+
+.log-info {
+  color: #4299e1;
+}
+
+/* Statistics cards */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1rem;
+}
+
+.stats-card {
+  padding: 1.5rem;
+  border-radius: 8px;
+  text-align: center;
+  border: 1px solid #e2e8f0;
+}
+
+.stats-card .value {
+  font-size: 2rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.stats-card .label {
+  font-size: 0.875rem;
+  opacity: 0.8;
+}
+
+.stats-card.error {
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.stats-card.warning {
+  background: #fefce8;
+  color: #a16207;
+}
+
+.stats-card.info {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.stats-card.success {
+  background: #f0fdf4;
+  color: #15803d;
+}
+
+/* Command history */
+.command-history {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.command-entry {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 1rem;
+}
+
+.command-entry.success {
+  border-color: #d1fae5;
+}
+
+.command-entry.error {
+  border-color: #fee2e2;
+}
+
+.command-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.command-text {
+  background: #f3f4f6;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.875rem;
+}
+
+.command-timestamp {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.command-output {
+  background: #f0fdf4;
+  padding: 0.5rem;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.875rem;
+  white-space: pre-wrap;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.command-output.error {
+  background: #fef2f2;
+  color: #991b1b;
+}
+
 /* Responsive */
 @media (max-width: 640px) {
   .header {
@@ -402,5 +679,17 @@ code {
   .modal {
     margin: 1rem;
     width: auto;
+  }
+  
+  .feature-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .system-status-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
   }
 }

@@ -3,11 +3,22 @@ import { useAuth } from '../contexts/AuthContext';
 import ModelList from './ModelList';
 import ModelForm from './ModelForm';
 import InferenceTest from './InferenceTest';
+import AdminDashboard from './AdminDashboard';
 import { LogOut } from 'lucide-react';
 
 const Dashboard = () => {
   const [activeTab, setActiveTab] = useState('models');
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
+
+  // Debug logging
+  console.log('Dashboard - user:', user);
+  console.log('Dashboard - user.isAdmin:', user?.isAdmin);
+
+  // If user is admin, show admin dashboard
+  if (user?.isAdmin) {
+    console.log('Rendering AdminDashboard for admin user');
+    return <AdminDashboard />;
+  }
 
   const tabs = [
     { id: 'models', label: 'Models', component: ModelList },

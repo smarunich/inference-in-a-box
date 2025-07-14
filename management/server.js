@@ -29,6 +29,10 @@ app.use((req, res, next) => {
   }
 });
 
+// Super admin credentials (in production, use environment variables)
+const SUPER_ADMIN_USERNAME = process.env.SUPER_ADMIN_USERNAME || 'admin';
+const SUPER_ADMIN_PASSWORD = process.env.SUPER_ADMIN_PASSWORD || 'admin123';
+
 // JWT Authentication middleware
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
@@ -36,6 +40,18 @@ const authenticateToken = (req, res, next) => {
 
   if (!token) {
     return res.status(401).json({ error: 'Access token required' });
+  }
+
+  // Check for super admin token
+  if (token === 'super-admin-token') {
+    req.user = {
+      tenant: 'admin',
+      name: 'Super Admin',
+      role: 'admin',
+      isAdmin: true,
+      exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60) // 24 hours
+    };
+    return next();
   }
 
   // For demo purposes, we'll validate against the existing JWT server
@@ -46,10 +62,19 @@ const authenticateToken = (req, res, next) => {
       return res.status(403).json({ error: 'Invalid token' });
     }
     req.user = decoded;
+    req.user.isAdmin = false; // Regular users are not admin
     next();
   } catch (error) {
     return res.status(403).json({ error: 'Invalid token' });
   }
+};
+
+// Admin-only middleware
+const requireAdmin = (req, res, next) => {
+  if (!req.user || !req.user.isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  next();
 };
 
 // Utility functions
@@ -100,6 +125,25 @@ app.get('/health', (req, res) => {
   res.json({ status: 'healthy', timestamp: new Date().toISOString() });
 });
 
+// Super admin login
+app.post('/api/admin/login', (req, res) => {
+  const { username, password } = req.body;
+  
+  if (username === SUPER_ADMIN_USERNAME && password === SUPER_ADMIN_PASSWORD) {
+    res.json({ 
+      token: 'super-admin-token',
+      user: {
+        tenant: 'admin',
+        name: 'Super Admin',
+        role: 'admin',
+        isAdmin: true
+      }
+    });
+  } else {
+    res.status(401).json({ error: 'Invalid credentials' });
+  }
+});
+
 // Get JWT tokens (proxy to existing JWT server)
 app.get('/api/tokens', async (req, res) => {
   try {
@@ -114,21 +158,74 @@ app.get('/api/tokens', async (req, res) => {
 // List all models
 app.get('/api/models', authenticateToken, async (req, res) => {
   try {
-    const tenant = req.user.tenant;
-    const command = `kubectl get inferenceservices -n ${tenant} -o json`;
-    const result = await execCommand(command);
-    const models = JSON.parse(result);
+    let command;
+    let models;
     
-    const modelList = models.items.map(model => ({
-      name: model.metadata.name,
-      namespace: model.metadata.namespace,
-      status: model.status?.conditions?.[0]?.status || 'Unknown',
-      ready: model.status?.conditions?.[0]?.type === 'Ready' && model.status?.conditions?.[0]?.status === 'True',
-      url: model.status?.url,
-      predictor: model.spec.predictor,
-      createdAt: model.metadata.creationTimestamp
-    }));
+    if (req.user.isAdmin) {
+      // Admin can see all models across all namespaces
+      command = `kubectl get inferenceservices -A -o json`;
+      const result = await execCommand(command);
+      models = JSON.parse(result);
+      console.log('API - Admin models raw data:', JSON.stringify(models, null, 2));
+    } else {
+      // Regular users see only their tenant models
+      const tenant = req.user.tenant;
+      command = `kubectl get inferenceservices -n ${tenant} -o json`;
+      const result = await execCommand(command);
+      models = JSON.parse(result);
+      console.log(`API - Tenant ${tenant} models raw data:`, JSON.stringify(models, null, 2));
+    }
+    
+    const modelList = models.items.map(model => {
+      // Check for different condition types that indicate readiness
+      const conditions = model.status?.conditions || [];
+      let ready = false;
+      let status = 'Unknown';
+      
+      // Look for Ready condition
+      const readyCondition = conditions.find(c => c.type === 'Ready');
+      if (readyCondition) {
+        ready = readyCondition.status === 'True';
+        status = readyCondition.status;
+      } else {
+        // Fallback: check if there's any condition with status True
+        const anyTrueCondition = conditions.find(c => c.status === 'True');
+        if (anyTrueCondition) {
+          ready = true;
+          status = 'True';
+        } else if (conditions.length > 0) {
+          status = conditions[0].status;
+        }
+      }
+      
+      // Additional check: if model has a URL, it's likely ready
+      if (model.status?.url && !ready) {
+        ready = true;
+        status = 'True';
+      }
+      
+      const processedModel = {
+        name: model.metadata.name,
+        namespace: model.metadata.namespace,
+        status: status,
+        ready: ready,
+        url: model.status?.url,
+        predictor: model.spec.predictor,
+        createdAt: model.metadata.creationTimestamp,
+        conditions: conditions // Include conditions for debugging
+      };
+      
+      console.log(`API - Processed model ${model.metadata.name}:`, {
+        ready: processedModel.ready,
+        status: processedModel.status,
+        hasUrl: !!processedModel.url,
+        conditionsCount: conditions.length
+      });
+      
+      return processedModel;
+    });
 
+    console.log('API - Final model list:', modelList.map(m => ({ name: m.name, ready: m.ready, status: m.status })));
     res.json({ models: modelList });
   } catch (error) {
     res.status(500).json({ error: 'Failed to list models', details: error.message });
@@ -144,15 +241,42 @@ app.get('/api/models/:modelName', authenticateToken, async (req, res) => {
     const result = await execCommand(command);
     const model = JSON.parse(result);
     
+    // Check for different condition types that indicate readiness
+    const conditions = model.status?.conditions || [];
+    let ready = false;
+    let status = 'Unknown';
+    
+    // Look for Ready condition
+    const readyCondition = conditions.find(c => c.type === 'Ready');
+    if (readyCondition) {
+      ready = readyCondition.status === 'True';
+      status = readyCondition.status;
+    } else {
+      // Fallback: check if there's any condition with status True
+      const anyTrueCondition = conditions.find(c => c.status === 'True');
+      if (anyTrueCondition) {
+        ready = true;
+        status = 'True';
+      } else if (conditions.length > 0) {
+        status = conditions[0].status;
+      }
+    }
+    
+    // Additional check: if model has a URL, it's likely ready
+    if (model.status?.url && !ready) {
+      ready = true;
+      status = 'True';
+    }
+    
     const modelInfo = {
       name: model.metadata.name,
       namespace: model.metadata.namespace,
-      status: model.status?.conditions?.[0]?.status || 'Unknown',
-      ready: model.status?.conditions?.[0]?.type === 'Ready' && model.status?.conditions?.[0]?.status === 'True',
+      status: status,
+      ready: ready,
       url: model.status?.url,
       predictor: model.spec.predictor,
       createdAt: model.metadata.creationTimestamp,
-      conditions: model.status?.conditions || []
+      conditions: conditions
     };
 
     res.json(modelInfo);
@@ -168,8 +292,10 @@ app.get('/api/models/:modelName', authenticateToken, async (req, res) => {
 // Create new model
 app.post('/api/models', authenticateToken, async (req, res) => {
   try {
-    const tenant = req.user.tenant;
-    const { name, framework, storageUri, minReplicas, maxReplicas, scaleTarget, scaleMetric } = req.body;
+    const { name, framework, storageUri, minReplicas, maxReplicas, scaleTarget, scaleMetric, namespace } = req.body;
+    
+    // For admin users, allow specifying namespace, otherwise use their tenant
+    const tenant = req.user.isAdmin ? (namespace || req.user.tenant) : req.user.tenant;
 
     if (!name || !framework || !storageUri) {
       return res.status(400).json({ error: 'Missing required fields: name, framework, storageUri' });
@@ -344,6 +470,155 @@ app.get('/api/frameworks', (req, res) => {
       { name: 'xgboost', description: 'XGBoost models' }
     ]
   });
+});
+
+// Admin-only endpoints
+// Get system information
+app.get('/api/admin/system', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const nodeCommand = 'kubectl get nodes -o json';
+    const namespaceCommand = 'kubectl get namespaces -o json';
+    const deploymentCommand = 'kubectl get deployments -A -o json';
+    
+    const [nodes, namespaces, deployments] = await Promise.all([
+      execCommand(nodeCommand),
+      execCommand(namespaceCommand),
+      execCommand(deploymentCommand)
+    ]);
+    
+    const systemInfo = {
+      nodes: JSON.parse(nodes).items.map(node => ({
+        name: node.metadata.name,
+        status: node.status.conditions.find(c => c.type === 'Ready')?.status || 'Unknown',
+        version: node.status.nodeInfo.kubeletVersion,
+        capacity: node.status.capacity,
+        allocatable: node.status.allocatable
+      })),
+      namespaces: JSON.parse(namespaces).items.map(ns => ({
+        name: ns.metadata.name,
+        status: ns.status.phase,
+        created: ns.metadata.creationTimestamp
+      })),
+      deployments: JSON.parse(deployments).items.map(dep => ({
+        name: dep.metadata.name,
+        namespace: dep.metadata.namespace,
+        ready: dep.status.readyReplicas || 0,
+        replicas: dep.status.replicas || 0,
+        available: dep.status.availableReplicas || 0
+      }))
+    };
+    
+    res.json(systemInfo);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to get system info', details: error.message });
+  }
+});
+
+// Get all tenants/namespaces
+app.get('/api/admin/tenants', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const command = 'kubectl get namespaces -o json';
+    const result = await execCommand(command);
+    const namespaces = JSON.parse(result);
+    
+    const tenants = namespaces.items
+      .filter(ns => ['tenant-a', 'tenant-b', 'tenant-c'].includes(ns.metadata.name))
+      .map(ns => ({
+        name: ns.metadata.name,
+        status: ns.status.phase,
+        created: ns.metadata.creationTimestamp
+      }));
+    
+    res.json({ tenants });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to get tenants', details: error.message });
+  }
+});
+
+// Get cluster resources
+app.get('/api/admin/resources', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const podsCommand = 'kubectl get pods -A -o json';
+    const servicesCommand = 'kubectl get services -A -o json';
+    const ingressCommand = 'kubectl get ingress -A -o json';
+    
+    const [pods, services, ingresses] = await Promise.all([
+      execCommand(podsCommand),
+      execCommand(servicesCommand),
+      execCommand(ingressCommand).catch(() => '{"items": []}') // Ingress might not exist
+    ]);
+    
+    const resources = {
+      pods: JSON.parse(pods).items.map(pod => ({
+        name: pod.metadata.name,
+        namespace: pod.metadata.namespace,
+        status: pod.status.phase,
+        ready: pod.status.containerStatuses?.every(c => c.ready) || false,
+        restarts: pod.status.containerStatuses?.reduce((sum, c) => sum + c.restartCount, 0) || 0,
+        created: pod.metadata.creationTimestamp
+      })),
+      services: JSON.parse(services).items.map(svc => ({
+        name: svc.metadata.name,
+        namespace: svc.metadata.namespace,
+        type: svc.spec.type,
+        clusterIP: svc.spec.clusterIP,
+        ports: svc.spec.ports
+      })),
+      ingresses: JSON.parse(ingresses).items.map(ing => ({
+        name: ing.metadata.name,
+        namespace: ing.metadata.namespace,
+        hosts: ing.spec.rules?.map(r => r.host) || [],
+        created: ing.metadata.creationTimestamp
+      }))
+    };
+    
+    res.json(resources);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to get resources', details: error.message });
+  }
+});
+
+// Get comprehensive logs
+app.get('/api/admin/logs', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { namespace, component, lines = 100 } = req.query;
+    
+    let command;
+    if (namespace && component) {
+      command = `kubectl logs -n ${namespace} -l app=${component} --tail=${lines}`;
+    } else if (namespace) {
+      command = `kubectl logs -n ${namespace} --all-containers=true --tail=${lines}`;
+    } else {
+      command = `kubectl logs -A --all-containers=true --tail=${lines}`;
+    }
+    
+    const logs = await execCommand(command);
+    res.json({ logs: logs.split('\n').filter(line => line.trim()) });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to get logs', details: error.message });
+  }
+});
+
+// Execute kubectl command (admin only)
+app.post('/api/admin/kubectl', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { command } = req.body;
+    
+    // Basic security check - only allow safe read operations
+    const safeCommands = ['get', 'describe', 'logs', 'top'];
+    const commandParts = command.split(' ');
+    
+    if (!safeCommands.includes(commandParts[0])) {
+      return res.status(403).json({ error: 'Only safe read operations are allowed' });
+    }
+    
+    const fullCommand = `kubectl ${command}`;
+    const result = await execCommand(fullCommand);
+    
+    res.json({ result, command: fullCommand });
+  } catch (error) {
+    res.status(500).json({ error: 'Command execution failed', details: error.message });
+  }
 });
 
 // Serve React app for all other routes (SPA fallback)

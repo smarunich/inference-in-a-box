@@ -20,7 +20,20 @@ const ModelList = () => {
     try {
       setLoading(true);
       const response = await api.getModels();
-      setModels(response.data.models || []);
+      const models = response.data.models || [];
+      console.log('ModelList - fetched models:', models);
+      
+      // Debug each model's status
+      models.forEach(model => {
+        console.log(`Model ${model.name}:`, {
+          ready: model.ready,
+          status: model.status,
+          conditions: model.conditions,
+          url: model.url
+        });
+      });
+      
+      setModels(models);
     } catch (error) {
       toast.error('Failed to fetch models');
       console.error('Error fetching models:', error);

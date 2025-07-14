@@ -18,9 +18,20 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     if (token) {
       try {
-        // Decode JWT token to get user info
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        setUser(payload);
+        // Handle super admin token
+        if (token === 'super-admin-token') {
+          setUser({
+            tenant: 'admin',
+            name: 'Super Admin',
+            role: 'admin',
+            isAdmin: true,
+            exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60) // 24 hours
+          });
+        } else {
+          // Decode JWT token to get user info
+          const payload = JSON.parse(atob(token.split('.')[1]));
+          setUser(payload);
+        }
       } catch (error) {
         console.error('Invalid token:', error);
         logout();
@@ -30,12 +41,28 @@ export const AuthProvider = ({ children }) => {
   }, [token]);
 
   const login = (newToken) => {
+    console.log('AuthContext - login called with token:', newToken);
     localStorage.setItem('auth_token', newToken);
     setToken(newToken);
     
     try {
-      const payload = JSON.parse(atob(newToken.split('.')[1]));
-      setUser(payload);
+      // Handle super admin token
+      if (newToken === 'super-admin-token') {
+        const adminUser = {
+          tenant: 'admin',
+          name: 'Super Admin',
+          role: 'admin',
+          isAdmin: true,
+          exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60) // 24 hours
+        };
+        console.log('AuthContext - setting admin user:', adminUser);
+        setUser(adminUser);
+      } else {
+        // Decode JWT token to get user info
+        const payload = JSON.parse(atob(newToken.split('.')[1]));
+        console.log('AuthContext - setting regular user:', payload);
+        setUser(payload);
+      }
     } catch (error) {
       console.error('Invalid token:', error);
       logout();

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApi } from '../contexts/ApiContext';
+import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
 
 const ModelForm = ({ model, onComplete, onCancel }) => {
@@ -10,17 +11,23 @@ const ModelForm = ({ model, onComplete, onCancel }) => {
     minReplicas: 1,
     maxReplicas: 3,
     scaleTarget: 60,
-    scaleMetric: 'concurrency'
+    scaleMetric: 'concurrency',
+    namespace: ''
   });
   const [frameworks, setFrameworks] = useState([]);
+  const [tenants, setTenants] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadingFrameworks, setLoadingFrameworks] = useState(true);
   const api = useApi();
+  const { user } = useAuth();
 
   const isEdit = !!model;
 
   useEffect(() => {
     fetchFrameworks();
+    if (user?.isAdmin) {
+      fetchTenants();
+    }
     
     if (model) {
       // Pre-populate form for editing
@@ -35,10 +42,20 @@ const ModelForm = ({ model, onComplete, onCancel }) => {
         minReplicas: model.predictor?.minReplicas || 1,
         maxReplicas: model.predictor?.maxReplicas || 3,
         scaleTarget: model.predictor?.scaleTarget || 60,
-        scaleMetric: model.predictor?.scaleMetric || 'concurrency'
+        scaleMetric: model.predictor?.scaleMetric || 'concurrency',
+        namespace: model.namespace || ''
       });
     }
-  }, [model]);
+  }, [model, user]);
+
+  const fetchTenants = async () => {
+    try {
+      const response = await api.getTenants();
+      setTenants(response.data.tenants);
+    } catch (error) {
+      console.error('Error fetching tenants:', error);
+    }
+  };
 
   const fetchFrameworks = async () => {
     try {
@@ -67,6 +84,11 @@ const ModelForm = ({ model, onComplete, onCancel }) => {
     
     if (!formData.name || !formData.framework || !formData.storageUri) {
       toast.error('Please fill in all required fields');
+      return;
+    }
+
+    if (user?.isAdmin && !formData.namespace) {
+      toast.error('Please select a namespace');
       return;
     }
 
@@ -177,6 +199,30 @@ const ModelForm = ({ model, onComplete, onCancel }) => {
             </select>
           </div>
         </div>
+
+        {/* Namespace selection for admin users */}
+        {user?.isAdmin && (
+          <div className="form-group">
+            <label className="form-label">Namespace (Tenant) *</label>
+            <select
+              name="namespace"
+              value={formData.namespace}
+              onChange={handleChange}
+              className="form-select"
+              required
+            >
+              <option value="">Select namespace</option>
+              {tenants.map(tenant => (
+                <option key={tenant.name} value={tenant.name}>
+                  {tenant.name} - {tenant.status}
+                </option>
+              ))}
+            </select>
+            <small style={{ color: '#6b7280' }}>
+              Select the tenant namespace where this model will be deployed
+            </small>
+          </div>
+        )}
 
         <div className="form-group">
           <label className="form-label">Storage URI *</label>

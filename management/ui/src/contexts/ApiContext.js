@@ -39,6 +39,7 @@ export const ApiProvider = ({ children }) => {
     // Authentication
     getTokens: () => api.get('/tokens'),
     getTenantInfo: () => api.get('/tenant'),
+    adminLogin: (credentials) => api.post('/admin/login', credentials),
     
     // Models
     getModels: () => api.get('/models'),
@@ -55,6 +56,13 @@ export const ApiProvider = ({ children }) => {
     
     // Frameworks
     getFrameworks: () => api.get('/frameworks'),
+    
+    // Admin endpoints
+    getSystemInfo: () => api.get('/admin/system'),
+    getTenants: () => api.get('/admin/tenants'),
+    getResources: () => api.get('/admin/resources'),
+    getAdminLogs: (params = {}) => api.get('/admin/logs', { params }),
+    executeKubectl: (command) => api.post('/admin/kubectl', { command }),
   };
 
   return (
