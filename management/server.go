@@ -27,9 +27,24 @@ func NewServer(config *Config, authService *AuthService, modelService *ModelServ
 
 	router := gin.New()
 	
-	// Add middleware
-	router.Use(gin.Logger())
-	router.Use(gin.Recovery())
+	// Configure logging
+	ConfigureLogging()
+	
+	// Add middleware based on log level
+	logLevel := GetLogLevel()
+	switch logLevel {
+	case LogLevelDetailed, LogLevelDebug:
+		// Detailed logging with request/response bodies
+		router.Use(DetailedRequestResponseLogger())
+		router.Use(gin.Recovery())
+	default:
+		// Basic logging
+		router.Use(RequestResponseLogger())
+		router.Use(gin.Recovery())
+	}
+	
+	// Add request ID middleware for tracing
+	router.Use(RequestIDMiddleware())
 	
 	// Add CORS middleware
 	router.Use(corsMiddleware())

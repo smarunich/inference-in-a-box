@@ -72,6 +72,8 @@ spec:
           value: "8080"
         - name: NODE_ENV
           value: "production"
+        - name: LOG_LEVEL
+          value: "DEBUG"
         - name: SUPER_ADMIN_USERNAME
           value: "admin"
         - name: SUPER_ADMIN_PASSWORD

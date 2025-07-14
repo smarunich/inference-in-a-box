@@ -123,4 +123,11 @@ func testConfiguration() {
 	if err == nil && user.IsAdmin {
 		log.Println("✅ JWT validation works")
 	}
+	
+	// Test logging functionality
+	log.Println("✅ Testing logging functionality...")
+	ConfigureLogging()
+	logLevel := GetLogLevel()
+	log.Printf("✅ Current log level: %d", logLevel)
+	log.Println("✅ Logging configuration works")
 }
