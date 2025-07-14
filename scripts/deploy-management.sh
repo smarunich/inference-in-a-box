@@ -32,7 +32,6 @@ print_error() {
 }
 
 DEPLOYMENT_FILE="$CONFIGS_DIR/management.yaml"
-print_status "Using registry-based deployment (Backend)"
 
 # Check if deployment file exists
 if [ ! -f "$DEPLOYMENT_FILE" ]; then

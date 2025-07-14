@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -365,35 +366,91 @@ func (k *K8sClient) GetModelLogs(namespace, modelName string, lines int) ([]stri
 
 // GetSystemLogs retrieves system logs
 func (k *K8sClient) GetSystemLogs(namespace, component string, lines int) ([]string, error) {
-	cmd := fmt.Sprintf("kubectl logs -n %s", namespace)
+	ctx := context.Background()
+	var allLogs []string
 	
-	if component != "" {
-		cmd += fmt.Sprintf(" -l app=%s", component)
-	} else {
-		cmd += " --all-containers=true"
-	}
-	
-	cmd += fmt.Sprintf(" --tail=%d", lines)
-	
+	// Get all namespaces if namespace is empty
+	namespaces := []string{namespace}
 	if namespace == "" {
-		cmd = strings.Replace(cmd, fmt.Sprintf("-n %s", namespace), "-A", 1)
-	}
-	
-	result, err := ExecuteCommand(cmd)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get system logs: %w", err)
-	}
-	
-	// Split logs into lines and filter empty ones
-	logLines := strings.Split(result, "\n")
-	var filteredLines []string
-	for _, line := range logLines {
-		if strings.TrimSpace(line) != "" {
-			filteredLines = append(filteredLines, line)
+		nsList, err := k.clientset.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to list namespaces: %w", err)
+		}
+		namespaces = make([]string, len(nsList.Items))
+		for i, ns := range nsList.Items {
+			namespaces[i] = ns.Name
 		}
 	}
 	
-	return filteredLines, nil
+	// For each namespace, get pods and their logs
+	for _, ns := range namespaces {
+		var pods *corev1.PodList
+		var err error
+		
+		if component != "" {
+			// Filter by label selector
+			labelSelector := fmt.Sprintf("app=%s", component)
+			pods, err = k.clientset.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{
+				LabelSelector: labelSelector,
+			})
+		} else {
+			// Get all pods
+			pods, err = k.clientset.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{})
+		}
+		
+		if err != nil {
+			continue // Skip this namespace if we can't list pods
+		}
+		
+		// Get logs from each pod
+		for _, pod := range pods.Items {
+			if pod.Status.Phase != corev1.PodRunning && pod.Status.Phase != corev1.PodSucceeded {
+				continue // Skip pods that aren't running
+			}
+			
+			// Get logs from each container in the pod
+			for _, container := range pod.Spec.Containers {
+				logOptions := &corev1.PodLogOptions{
+					Container: container.Name,
+					TailLines: func(i int64) *int64 { return &i }(int64(lines / len(pods.Items))), // Distribute lines across pods
+				}
+				
+				logStream, err := k.clientset.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, logOptions).Stream(ctx)
+				if err != nil {
+					// Add error info but continue with other pods
+					allLogs = append(allLogs, fmt.Sprintf("[ERROR] Failed to get logs from %s/%s/%s: %v", pod.Namespace, pod.Name, container.Name, err))
+					continue
+				}
+				
+				logBytes, err := io.ReadAll(logStream)
+				logStream.Close()
+				if err != nil {
+					allLogs = append(allLogs, fmt.Sprintf("[ERROR] Failed to read logs from %s/%s/%s: %v", pod.Namespace, pod.Name, container.Name, err))
+					continue
+				}
+				
+				// Process log lines
+				logContent := string(logBytes)
+				if strings.TrimSpace(logContent) != "" {
+					logLines := strings.Split(logContent, "\n")
+					for _, line := range logLines {
+						if strings.TrimSpace(line) != "" {
+							// Prefix with pod info for clarity
+							prefixedLine := fmt.Sprintf("[%s/%s/%s] %s", pod.Namespace, pod.Name, container.Name, line)
+							allLogs = append(allLogs, prefixedLine)
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	// Limit total number of log lines returned
+	if len(allLogs) > lines {
+		allLogs = allLogs[len(allLogs)-lines:]
+	}
+	
+	return allLogs, nil
 }
 
 // Helper function to log errors
