@@ -4,155 +4,184 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Inference-in-a-Box** is a comprehensive Kubernetes-based AI/ML inference platform demonstration that showcases enterprise-grade model serving using modern cloud-native technologies. It's a reference implementation for organizations deploying AI/ML models at scale with multi-tenancy, security, and observability.
-
-## Technology Stack
-
-- **Kubernetes**: Container orchestration via Kind (Kubernetes in Docker)
-- **Istio v1.26.2**: Service mesh for security, traffic management, and observability
-- **KServe v0.15.2**: Kubernetes-native serverless model serving
-- **Knative v1.18.1**: Serverless framework with scale-to-zero capabilities
-- **Envoy AI Gateway v0.2.1**: AI-specific gateway with JWT authentication
-- **Observability**: Prometheus, Grafana, Jaeger, Kiali
+**Inference-in-a-Box** is a comprehensive Kubernetes-based AI/ML inference platform demonstration showcasing enterprise-grade model serving using cloud-native technologies. It's an infrastructure-as-code project demonstrating production-ready AI/ML deployment patterns with Envoy AI Gateway, Istio service mesh, KServe, and comprehensive observability.
 
 ## Key Commands
 
-### Environment Setup
+### Environment Setup & Bootstrap
 ```bash
-# Complete platform bootstrap (10-15 minutes)
+# Complete platform bootstrap (primary deployment command)
 ./scripts/bootstrap.sh
-
-# Interactive demo with sample scenarios
-./scripts/demo.sh
 
 # Clean up entire environment
 ./scripts/cleanup.sh
+
+# Test CI/CD workflow locally (validation only, no cluster required)
+./scripts/test-ci-locally.sh
 ```
 
 ### Cluster Management
 ```bash
-# Create Kind cluster
+# Create Kind cluster for local development
 ./scripts/clusters/create-kind-cluster.sh
+
+# Setup networking components
+./scripts/clusters/setup-networking.sh
 
 # Check cluster status
 kubectl cluster-info --context kind-inference-in-a-box
 ```
 
-### Model Deployment
+### Management Service (Go Backend + React Frontend)
 ```bash
-# Deploy all sample models
-./scripts/models/deploy-models.sh
+# Build and deploy management service (Go backend with embedded React UI)
+./scripts/build-management.sh
 
-# Deploy specific model
-kubectl apply -f configs/kserve/models/sklearn-iris.yaml
+# Deploy management service to Kubernetes
+./scripts/deploy-management.sh
+
+# Development commands for React frontend
+cd management && npm run build:ui      # Build React UI
+cd management && npm run test:ui       # Test React UI
+cd management && npm run start:ui      # Dev server for React UI
+
+# Go backend development
+cd management && go mod tidy           # Update Go dependencies
+cd management && go build             # Build Go binary
+cd management && go test ./...         # Run Go tests
 ```
 
-### Testing and Validation
+### Demo & Testing
 ```bash
-# Run sample inference requests with JWT auth
-./examples/inference-requests/sample-requests.sh
+# Interactive demo with multiple scenarios
+./scripts/demo.sh
 
-# Test specific tenant model
-./scripts/test-inference.sh tenant-a sklearn-iris
+# Specific demo scenarios
+./scripts/demo-security.sh      # JWT authentication & authorization demo
+./scripts/demo-autoscaling.sh   # Serverless auto-scaling demo  
+./scripts/demo-canary.sh        # Canary deployment demo
+./scripts/demo-multitenancy.sh  # Multi-tenant isolation demo
+./scripts/demo-observability.sh # Monitoring & tracing demo
+
+# Get JWT tokens for testing
+./scripts/get-jwt-tokens.sh
 ```
 
-### Service Access
+### Build & Container Management
 ```bash
-# Port-forward to access services locally
-kubectl port-forward -n monitoring svc/prometheus-grafana 3000:80                    # Grafana
-kubectl port-forward -n monitoring svc/prometheus-kube-prometheus-prometheus 9090:9090 # Prometheus
-kubectl port-forward -n monitoring svc/kiali 20001:20001                             # Kiali
-kubectl port-forward -n istio-system svc/istio-ingressgateway 8080:80                # AI Gateway via Istio
-kubectl port-forward -n default svc/jwt-server 8081:8080                             # JWT Server
+# Build all images locally
+./scripts/build-local-images.sh
+
+# Build and push to registry
+./scripts/build-and-push-images.sh
+
+# Build multi-architecture images
+./scripts/build-multiarch-images.sh
+```
+
+### Service Access (Port Forwarding)
+```bash
+# Management Service UI & API
+kubectl port-forward svc/management-service 8085:80
+
+# Observability Stack
+kubectl port-forward -n monitoring svc/prometheus-grafana 3000:80
+kubectl port-forward -n monitoring svc/prometheus-kube-prometheus-prometheus 9090:9090
+kubectl port-forward -n monitoring svc/kiali 20001:20001
+
+# AI Gateway & Auth
+kubectl port-forward -n istio-system svc/istio-ingressgateway 8080:80
+kubectl port-forward -n default svc/jwt-server 8081:8080
 ```
 
 ## Architecture
 
-### Multi-Tenant Design
-- **Tenant Namespaces**: `tenant-a`, `tenant-b`, `tenant-c` with isolated resources
-- **Security Boundaries**: Istio authorization policies and RBAC per tenant
-- **Resource Governance**: Separate quotas and policies per tenant
+### Two-Tier Gateway Design
+This platform implements a **dual-gateway architecture** where external traffic flows through:
+1. **Tier-1: Envoy AI Gateway** - Primary entry point with JWT authentication, rate limiting, and AI-specific routing
+2. **Tier-2: Istio Gateway** - Service mesh routing with mTLS encryption and traffic management
 
-### AI Gateway Layer
-- **Envoy AI Gateway**: Primary entry point with JWT authentication
-- **Intelligent Routing**: Path-based and header-based model routing  
-- **Rate Limiting**: Per-tenant and global rate limiting
-- **JWT Validation**: Automatic token validation with JWKS integration
+### Technology Stack Integration
+- **Kind Cluster**: Local Kubernetes cluster (`inference-in-a-box`)
+- **Envoy AI Gateway**: AI-specific gateway with JWT validation and model routing
+- **Istio Service Mesh**: Zero-trust networking with automatic mTLS between services
+- **KServe**: Kubernetes-native serverless model serving with auto-scaling
+- **Knative**: Serverless framework enabling scale-to-zero capabilities
+- **Management Service**: Go backend with embedded React frontend for platform administration
+
+### Multi-Tenant Architecture
+- **Tenant Namespaces**: `tenant-a`, `tenant-b`, `tenant-c` with complete resource isolation
+- **Security Boundaries**: Istio authorization policies and Kubernetes RBAC per tenant
+- **Resource Governance**: Separate quotas, policies, and observability scopes per tenant
 
 ### Serverless Model Serving
-- **KServe InferenceServices**: Auto-scaling model endpoints with scale-to-zero
-- **Supported Frameworks**: Scikit-learn, PyTorch, TensorFlow, ONNX
-- **Traffic Splitting**: Canary deployments and A/B testing capabilities
-
-### Service Mesh Security
-- **Zero-Trust**: Automatic mTLS between all services
-- **JWT Authentication**: JWT server with JWKS endpoint for token validation
-- **Authorization Policies**: Fine-grained access control
-- **Tenant Isolation**: Namespace-based security boundaries
+- **KServe InferenceServices**: Auto-scaling model endpoints with scale-to-zero capabilities
+- **Supported Frameworks**: Scikit-learn, PyTorch, TensorFlow, Hugging Face transformers
+- **Traffic Management**: Canary deployments, A/B testing, and blue-green deployment patterns
 
 ## Key Directories
 
-### Configuration
-- `configs/envoy-gateway/` - AI Gateway configurations (GatewayClass, HTTPRoute, Security Policies)
-- `configs/kserve/models/` - Model deployment configurations
-- `configs/istio/` - Service mesh policies and routing rules
-- `configs/auth/` - JWT server deployment and authentication
-- `configs/certs/` - TLS certificate management
-- `configs/observability/` - Grafana dashboards and monitoring
+### Configuration Structure
+- `configs/envoy-gateway/` - AI Gateway configurations (GatewayClass, HTTPRoute, Security Policies, Rate Limiting)
+- `configs/istio/` - Service mesh policies, authorization rules, and routing configurations
+- `configs/kserve/models/` - Model deployment specifications for various ML frameworks
+- `configs/auth/` - JWT server deployment and authentication configuration
+- `configs/management/` - Management service deployment configuration
+- `configs/observability/` - Grafana dashboards and monitoring configuration
 
-### Scripts
-- `scripts/bootstrap.sh` - **Main deployment script**
-- `scripts/demo.sh` - **Interactive demo runner**
-- `scripts/clusters/` - Cluster management scripts
-- `scripts/models/` - Model deployment automation
-- `scripts/security/` - Security configuration scripts
+### Scripts Directory
+- `scripts/bootstrap.sh` - **Primary deployment script** for complete platform setup
+- `scripts/demo.sh` - **Interactive demo runner** with multiple scenarios
+- `scripts/build-management.sh` - **Management service build and deployment**
+- `scripts/clusters/` - Cluster management and networking setup scripts
+- `scripts/security/` - Security configuration and policy setup scripts
 
-### Examples
-- `examples/inference-requests/` - Sample API calls with authentication
-- `examples/traffic-scenarios/` - Canary and A/B testing examples
-- `examples/serverless/` - Serverless configuration samples
+### Management Service (Go + React)
+- `management/` - Go backend source code with Kubernetes API integration
+- `management/ui/` - React frontend for platform administration
+- `management/Dockerfile` - Container image build configuration
+- `management/go.mod` - Go module dependencies and version constraints
+- `management/package.json` - NPM scripts for React UI development
 
-### Models
-- `models/sklearn-iris/` - Iris classification model artifacts
-- `models/tensorflow-mnist/` - MNIST digit classification model
-- `models/pytorch-resnet/` - ResNet image classification model
+### Examples & Documentation
+- `examples/serverless/` - Serverless configuration examples and templates
+- `examples/traffic-scenarios/` - Canary and A/B testing configuration examples
+- `docs/` - Architecture documentation and deployment guides
 
-## Development Notes
+## Development Workflow
 
-- **Prerequisites**: Docker Desktop, kubectl, Kind, Helm 3.12+, curl, jq
-- **Cluster Name**: `inference-in-a-box` (Kind cluster)
-- **No Traditional Dependencies**: This is infrastructure-as-code, not application code
-- **Shell-Driven**: All automation via bash scripts, no package managers
-- **Production Patterns**: Demonstrates enterprise-grade AI/ML deployment practices
+### Prerequisites
+This is an infrastructure-as-code project requiring:
+- Docker Desktop with Kubernetes enabled
+- kubectl (Kubernetes CLI)
+- Kind (Kubernetes in Docker)
+- Helm 3.12+
+- curl and jq for API testing
 
-## Authentication
+### No Traditional Package Management
+This project uses shell-driven automation without traditional package managers. All dependencies are managed through:
+- Helm charts for Kubernetes components
+- Docker images for containerized services
+- Go modules for the management service backend
+- NPM for React frontend dependencies
 
-JWT tokens are required for model inference. A JWT server is deployed during bootstrap that provides:
+### Authentication & Testing
+JWT tokens are required for model inference requests. The platform includes a JWT server with:
 - JWKS endpoint at `/.well-known/jwks.json`
-- Demo tokens endpoint at `/tokens`
+- Demo tokens endpoint at `/tokens` 
 - Health check at `/health`
 
-Get JWT tokens using:
-```bash
-./scripts/get-jwt-tokens.sh
-```
+### Common Development Patterns
+- **Component verification**: `kubectl get pods --all-namespaces`
+- **Service status**: `kubectl get inferenceservices --all-namespaces`
+- **Istio configuration**: `istioctl analyze --all-namespaces`
+- **Management service logs**: `kubectl logs -f deployment/management-service`
 
-Or retrieve them manually:
-```bash
-kubectl port-forward -n default svc/jwt-server 8081:8080 &
-curl http://localhost:8081/tokens
-```
+## Important Notes
 
-## Troubleshooting
-
-Check component status:
-```bash
-# Verify all pods are running
-kubectl get pods --all-namespaces
-
-# Check KServe inference services
-kubectl get inferenceservices --all-namespaces
-
-# Verify Istio configuration
-istioctl analyze --all-namespaces
-```
+- **Cluster Name**: All scripts assume a Kind cluster named `inference-in-a-box`
+- **No Traditional Testing Framework**: This is infrastructure validation, not unit testing
+- **Shell-Driven Deployment**: All automation implemented via bash scripts
+- **Production Patterns**: Demonstrates enterprise-grade AI/ML deployment practices with security, observability, and multi-tenancy
+- **Management Service**: Full-stack application (Go backend + React frontend) for platform administration
+- **Dual-Gateway Architecture**: External traffic flows through AI Gateway first, then Istio Gateway
