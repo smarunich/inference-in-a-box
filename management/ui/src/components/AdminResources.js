@@ -24,10 +24,25 @@ const AdminResources = () => {
     try {
       setLoading(true);
       const response = await api.getResources();
-      setResources(response.data);
+      setResources(response.data || {
+        pods: [],
+        services: [],
+        gateways: [],
+        httpRoutes: [],
+        virtualServices: [],
+        istioGateways: []
+      });
     } catch (error) {
       toast.error('Failed to fetch resources');
       console.error('Error fetching resources:', error);
+      setResources({
+        pods: [],
+        services: [],
+        gateways: [],
+        httpRoutes: [],
+        virtualServices: [],
+        istioGateways: []
+      });
     } finally {
       setLoading(false);
     }
