@@ -1,8 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	corev1 "k8s.io/api/core/v1"
@@ -156,15 +158,36 @@ func (s *AdminService) GetResources(c *gin.Context) {
 		return
 	}
 
-	// Get ingresses
-	ingresses, err := s.k8sClient.GetIngresses("")
+
+	// Get Gateway API gateways
+	gateways, err := s.k8sClient.GetGateways("")
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{
-			Error:   "Failed to get ingresses",
-			Details: err.Error(),
-		})
-		return
+		// Log error but continue - Gateway API might not be installed
+		log.Printf("Error getting gateways: %v", err)
+		gateways = []map[string]interface{}{}
 	}
+
+	// Get Gateway API HTTPRoutes
+	httpRoutes, err := s.k8sClient.GetHTTPRoutes("")
+	if err != nil {
+		// Log error but continue - Gateway API might not be installed
+		httpRoutes = []map[string]interface{}{}
+	}
+
+	// Get Istio VirtualServices
+	virtualServices, err := s.k8sClient.GetVirtualServices("")
+	if err != nil {
+		// Log error but continue - Istio might not be installed
+		virtualServices = []map[string]interface{}{}
+	}
+
+	// Get Istio Gateways
+	istioGateways, err := s.k8sClient.GetIstioGateways("")
+	if err != nil {
+		// Log error but continue - Istio might not be installed
+		istioGateways = []map[string]interface{}{}
+	}
+
 
 	// Convert to response format
 	var podInfos []PodInfo
@@ -218,27 +241,183 @@ func (s *AdminService) GetResources(c *gin.Context) {
 		})
 	}
 
-	var ingressInfos []IngressInfo
-	for _, ingress := range ingresses {
-		var hosts []string
-		if ingress.Spec.Rules != nil {
-			for _, rule := range ingress.Spec.Rules {
-				hosts = append(hosts, rule.Host)
+
+	// Convert Gateway API gateways to response format
+	var gatewayInfos []GatewayInfo
+	for _, gateway := range gateways {
+		metadata := gateway["metadata"].(map[string]interface{})
+		spec := gateway["spec"].(map[string]interface{})
+		
+		var listeners []string
+		var addresses []string
+		
+		if listenersData, ok := spec["listeners"].([]interface{}); ok {
+			for _, listener := range listenersData {
+				if l, ok := listener.(map[string]interface{}); ok {
+					name := l["name"].(string)
+					var port int64
+					switch p := l["port"].(type) {
+					case int64:
+						port = p
+					case float64:
+						port = int64(p)
+					}
+					protocol := l["protocol"].(string)
+					listeners = append(listeners, fmt.Sprintf("%s:%d/%s", name, port, protocol))
+				}
 			}
 		}
-
-		ingressInfos = append(ingressInfos, IngressInfo{
-			Name:      ingress.Name,
-			Namespace: ingress.Namespace,
-			Hosts:     hosts,
-			CreatedAt: ingress.CreationTimestamp.Time,
+		
+		if status, ok := gateway["status"].(map[string]interface{}); ok {
+			if addressesData, ok := status["addresses"].([]interface{}); ok {
+				for _, addr := range addressesData {
+					if a, ok := addr.(map[string]interface{}); ok {
+						if value, ok := a["value"].(string); ok {
+							addresses = append(addresses, value)
+						}
+					}
+				}
+			}
+		}
+		
+		gatewayClass := ""
+		if gc, ok := spec["gatewayClassName"].(string); ok {
+			gatewayClass = gc
+		}
+		
+		gatewayInfos = append(gatewayInfos, GatewayInfo{
+			Name:         metadata["name"].(string),
+			Namespace:    metadata["namespace"].(string),
+			GatewayClass: gatewayClass,
+			Listeners:    listeners,
+			Addresses:    addresses,
+			CreatedAt:    parseTime(metadata["creationTimestamp"].(string)),
 		})
 	}
 
+	// Convert HTTPRoutes to response format
+	var httpRouteInfos []HTTPRouteInfo
+	for _, route := range httpRoutes {
+		metadata := route["metadata"].(map[string]interface{})
+		spec := route["spec"].(map[string]interface{})
+		
+		var hostnames []string
+		var parentRefs []string
+		
+		if hostnamesData, ok := spec["hostnames"].([]interface{}); ok {
+			for _, hostname := range hostnamesData {
+				hostnames = append(hostnames, hostname.(string))
+			}
+		}
+		
+		if parentRefsData, ok := spec["parentRefs"].([]interface{}); ok {
+			for _, parentRef := range parentRefsData {
+				if pr, ok := parentRef.(map[string]interface{}); ok {
+					name := pr["name"].(string)
+					namespace := ""
+					if ns, ok := pr["namespace"].(string); ok {
+						namespace = ns
+					}
+					if namespace != "" {
+						parentRefs = append(parentRefs, fmt.Sprintf("%s/%s", namespace, name))
+					} else {
+						parentRefs = append(parentRefs, name)
+					}
+				}
+			}
+		}
+		
+		httpRouteInfos = append(httpRouteInfos, HTTPRouteInfo{
+			Name:       metadata["name"].(string),
+			Namespace:  metadata["namespace"].(string),
+			Hostnames:  hostnames,
+			ParentRefs: parentRefs,
+			CreatedAt:  parseTime(metadata["creationTimestamp"].(string)),
+		})
+	}
+
+	// Convert VirtualServices to response format
+	var virtualServiceInfos []VirtualServiceInfo
+	for _, vs := range virtualServices {
+		metadata := vs["metadata"].(map[string]interface{})
+		spec := vs["spec"].(map[string]interface{})
+		
+		var hosts []string
+		var gateways []string
+		
+		if hostsData, ok := spec["hosts"].([]interface{}); ok {
+			for _, host := range hostsData {
+				hosts = append(hosts, host.(string))
+			}
+		}
+		
+		if gatewaysData, ok := spec["gateways"].([]interface{}); ok {
+			for _, gateway := range gatewaysData {
+				gateways = append(gateways, gateway.(string))
+			}
+		}
+		
+		virtualServiceInfos = append(virtualServiceInfos, VirtualServiceInfo{
+			Name:      metadata["name"].(string),
+			Namespace: metadata["namespace"].(string),
+			Hosts:     hosts,
+			Gateways:  gateways,
+			CreatedAt: parseTime(metadata["creationTimestamp"].(string)),
+		})
+	}
+
+	// Convert Istio Gateways to response format
+	var istioGatewayInfos []IstioGatewayInfo
+	for _, ig := range istioGateways {
+		metadata := ig["metadata"].(map[string]interface{})
+		spec := ig["spec"].(map[string]interface{})
+		
+		var servers []string
+		selector := make(map[string]string)
+		
+		if serversData, ok := spec["servers"].([]interface{}); ok {
+			for _, server := range serversData {
+				if s, ok := server.(map[string]interface{}); ok {
+					port := s["port"].(map[string]interface{})
+					var number int64
+					switch n := port["number"].(type) {
+					case int64:
+						number = n
+					case float64:
+						number = int64(n)
+					}
+					protocol := port["protocol"].(string)
+					hosts := s["hosts"].([]interface{})
+					for _, host := range hosts {
+						servers = append(servers, fmt.Sprintf("%s:%d/%s", host.(string), number, protocol))
+					}
+				}
+			}
+		}
+		
+		if selectorData, ok := spec["selector"].(map[string]interface{}); ok {
+			for k, v := range selectorData {
+				selector[k] = v.(string)
+			}
+		}
+		
+		istioGatewayInfos = append(istioGatewayInfos, IstioGatewayInfo{
+			Name:      metadata["name"].(string),
+			Namespace: metadata["namespace"].(string),
+			Servers:   servers,
+			Selector:  selector,
+			CreatedAt: parseTime(metadata["creationTimestamp"].(string)),
+		})
+	}
+
+
 	c.JSON(http.StatusOK, AdminResourcesResponse{
-		Pods:      podInfos,
-		Services:  serviceInfos,
-		Ingresses: ingressInfos,
+		Pods:            podInfos,
+		Services:        serviceInfos,
+		Gateways:        gatewayInfos,
+		HTTPRoutes:      httpRouteInfos,
+		VirtualServices: virtualServiceInfos,
+		IstioGateways:   istioGatewayInfos,
 	})
 }
 
@@ -304,4 +483,13 @@ func convertResourceList(resources corev1.ResourceList) map[string]interface{} {
 		result[string(key)] = value.String()
 	}
 	return result
+}
+
+// Helper function to parse time from string
+func parseTime(timeStr string) time.Time {
+	t, err := time.Parse(time.RFC3339, timeStr)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
 }

@@ -1,10 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { useApi } from '../contexts/ApiContext';
 import toast from 'react-hot-toast';
-import { RefreshCw, Box, Globe, Network, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { RefreshCw, Box, Globe, Network, CheckCircle, XCircle, AlertCircle, ArrowRight, Zap, Shield } from 'lucide-react';
 
 const AdminResources = () => {
-  const [resources, setResources] = useState(null);
+  const [resources, setResources] = useState({
+    pods: [],
+    services: [],
+    gateways: [],
+    httpRoutes: [],
+    virtualServices: [],
+    istioGateways: []
+  });
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('pods');
   const api = useApi();
@@ -62,9 +69,12 @@ const AdminResources = () => {
   }
 
   const tabs = [
-    { id: 'pods', label: 'Pods', icon: Box, data: resources.pods },
-    { id: 'services', label: 'Services', icon: Network, data: resources.services },
-    { id: 'ingresses', label: 'Ingresses', icon: Globe, data: resources.ingresses },
+    { id: 'pods', label: 'Pods', icon: Box, data: resources.pods || [] },
+    { id: 'services', label: 'Services', icon: Network, data: resources.services || [] },
+    { id: 'gateways', label: 'Gateways', icon: Globe, data: resources.gateways || [] },
+    { id: 'httproutes', label: 'HTTP Routes', icon: ArrowRight, data: resources.httpRoutes || [] },
+    { id: 'virtualservices', label: 'Virtual Services', icon: Zap, data: resources.virtualServices || [] },
+    { id: 'istiogateways', label: 'Istio Gateways', icon: Shield, data: resources.istioGateways || [] },
   ];
 
   return (
@@ -81,23 +91,30 @@ const AdminResources = () => {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
         <div style={{ textAlign: 'center', padding: '1rem', backgroundColor: '#f0f9ff', borderRadius: '6px' }}>
           <div style={{ fontSize: '2rem', fontWeight: '600', color: '#0369a1' }}>
-            {resources.pods.filter(p => p.ready).length}
+            {(resources.pods || []).filter(p => p.ready).length}
           </div>
           <div style={{ fontSize: '0.875rem', color: '#075985' }}>Ready Pods</div>
         </div>
         
         <div style={{ textAlign: 'center', padding: '1rem', backgroundColor: '#f0fdf4', borderRadius: '6px' }}>
           <div style={{ fontSize: '2rem', fontWeight: '600', color: '#15803d' }}>
-            {resources.services.length}
+            {(resources.services || []).length}
           </div>
           <div style={{ fontSize: '0.875rem', color: '#14532d' }}>Services</div>
         </div>
         
         <div style={{ textAlign: 'center', padding: '1rem', backgroundColor: '#fefce8', borderRadius: '6px' }}>
           <div style={{ fontSize: '2rem', fontWeight: '600', color: '#ca8a04' }}>
-            {resources.ingresses.length}
+            {(resources.gateways || []).length + (resources.istioGateways || []).length}
           </div>
-          <div style={{ fontSize: '0.875rem', color: '#a16207' }}>Ingresses</div>
+          <div style={{ fontSize: '0.875rem', color: '#a16207' }}>Gateways</div>
+        </div>
+        
+        <div style={{ textAlign: 'center', padding: '1rem', backgroundColor: '#f0f9ff', borderRadius: '6px' }}>
+          <div style={{ fontSize: '2rem', fontWeight: '600', color: '#0369a1' }}>
+            {(resources.httpRoutes || []).length + (resources.virtualServices || []).length}
+          </div>
+          <div style={{ fontSize: '0.875rem', color: '#075985' }}>Routes</div>
         </div>
       </div>
 
@@ -134,7 +151,7 @@ const AdminResources = () => {
               </tr>
             </thead>
             <tbody>
-              {resources.pods.map(pod => (
+              {(resources.pods || []).map(pod => (
                 <tr key={`${pod.namespace}-${pod.name}`}>
                   <td>
                     <div style={{ fontWeight: '500' }}>{pod.name}</div>
@@ -193,7 +210,7 @@ const AdminResources = () => {
               </tr>
             </thead>
             <tbody>
-              {resources.services.map(service => (
+              {(resources.services || []).map(service => (
                 <tr key={`${service.namespace}-${service.name}`}>
                   <td>
                     <div style={{ fontWeight: '500' }}>{service.name}</div>
@@ -244,8 +261,170 @@ const AdminResources = () => {
         </div>
       )}
 
-      {/* Ingresses Tab */}
-      {activeTab === 'ingresses' && (
+      {/* Gateways Tab */}
+      {activeTab === 'gateways' && (
+        <div className="table-container">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Namespace</th>
+                <th>Gateway Class</th>
+                <th>Listeners</th>
+                <th>Addresses</th>
+                <th>Created</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(resources.gateways || []).length === 0 ? (
+                <tr>
+                  <td colSpan="6" style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
+                    No Gateway API gateways found
+                  </td>
+                </tr>
+              ) : (
+                (resources.gateways || []).map(gateway => (
+                  <tr key={`${gateway.namespace}-${gateway.name}`}>
+                    <td>
+                      <div style={{ fontWeight: '500' }}>{gateway.name}</div>
+                    </td>
+                    <td>
+                      <span style={{
+                        padding: '0.25rem 0.5rem',
+                        backgroundColor: '#f3f4f6',
+                        borderRadius: '4px',
+                        fontSize: '0.875rem'
+                      }}>
+                        {gateway.namespace}
+                      </span>
+                    </td>
+                    <td>
+                      <span style={{
+                        padding: '0.25rem 0.5rem',
+                        backgroundColor: '#dbeafe',
+                        borderRadius: '4px',
+                        fontSize: '0.875rem',
+                        color: '#1e40af'
+                      }}>
+                        {gateway.gatewayClass || 'N/A'}
+                      </span>
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
+                        {gateway.listeners?.map((listener, idx) => (
+                          <span key={idx} style={{
+                            padding: '0.125rem 0.25rem',
+                            backgroundColor: '#f0f9ff',
+                            borderRadius: '3px',
+                            fontSize: '0.75rem',
+                            color: '#1e40af'
+                          }}>
+                            {listener}
+                          </span>
+                        )) || 'None'}
+                      </div>
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
+                        {gateway.addresses?.map((address, idx) => (
+                          <span key={idx} style={{
+                            padding: '0.125rem 0.25rem',
+                            backgroundColor: '#f0fdf4',
+                            borderRadius: '3px',
+                            fontSize: '0.75rem',
+                            color: '#15803d'
+                          }}>
+                            {address}
+                          </span>
+                        )) || 'Pending'}
+                      </div>
+                    </td>
+                    <td>{formatDate(gateway.createdAt)}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* HTTP Routes Tab */}
+      {activeTab === 'httproutes' && (
+        <div className="table-container">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Namespace</th>
+                <th>Hostnames</th>
+                <th>Parent Refs</th>
+                <th>Created</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(resources.httpRoutes || []).length === 0 ? (
+                <tr>
+                  <td colSpan="5" style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
+                    No HTTP routes found
+                  </td>
+                </tr>
+              ) : (
+                (resources.httpRoutes || []).map(route => (
+                  <tr key={`${route.namespace}-${route.name}`}>
+                    <td>
+                      <div style={{ fontWeight: '500' }}>{route.name}</div>
+                    </td>
+                    <td>
+                      <span style={{
+                        padding: '0.25rem 0.5rem',
+                        backgroundColor: '#f3f4f6',
+                        borderRadius: '4px',
+                        fontSize: '0.875rem'
+                      }}>
+                        {route.namespace}
+                      </span>
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
+                        {route.hostnames?.map((hostname, idx) => (
+                          <span key={idx} style={{
+                            padding: '0.125rem 0.25rem',
+                            backgroundColor: '#f0f9ff',
+                            borderRadius: '3px',
+                            fontSize: '0.75rem',
+                            color: '#1e40af'
+                          }}>
+                            {hostname}
+                          </span>
+                        )) || 'None'}
+                      </div>
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
+                        {route.parentRefs?.map((ref, idx) => (
+                          <span key={idx} style={{
+                            padding: '0.125rem 0.25rem',
+                            backgroundColor: '#fef3c7',
+                            borderRadius: '3px',
+                            fontSize: '0.75rem',
+                            color: '#92400e'
+                          }}>
+                            {ref}
+                          </span>
+                        )) || 'None'}
+                      </div>
+                    </td>
+                    <td>{formatDate(route.createdAt)}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Virtual Services Tab */}
+      {activeTab === 'virtualservices' && (
         <div className="table-container">
           <table className="table">
             <thead>
@@ -253,39 +432,40 @@ const AdminResources = () => {
                 <th>Name</th>
                 <th>Namespace</th>
                 <th>Hosts</th>
+                <th>Gateways</th>
                 <th>Created</th>
               </tr>
             </thead>
             <tbody>
-              {resources.ingresses.length === 0 ? (
+              {(resources.virtualServices || []).length === 0 ? (
                 <tr>
-                  <td colSpan="4" style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
-                    No ingresses found
+                  <td colSpan="5" style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
+                    No Istio virtual services found
                   </td>
                 </tr>
               ) : (
-                resources.ingresses.map(ingress => (
-                  <tr key={`${ingress.namespace}-${ingress.name}`}>
+                (resources.virtualServices || []).map(vs => (
+                  <tr key={`${vs.namespace}-${vs.name}`}>
                     <td>
-                      <div style={{ fontWeight: '500' }}>{ingress.name}</div>
+                      <div style={{ fontWeight: '500' }}>{vs.name}</div>
                     </td>
                     <td>
-                      <span style={{ 
-                        padding: '0.25rem 0.5rem', 
-                        backgroundColor: '#f3f4f6', 
-                        borderRadius: '4px', 
-                        fontSize: '0.875rem' 
+                      <span style={{
+                        padding: '0.25rem 0.5rem',
+                        backgroundColor: '#f3f4f6',
+                        borderRadius: '4px',
+                        fontSize: '0.875rem'
                       }}>
-                        {ingress.namespace}
+                        {vs.namespace}
                       </span>
                     </td>
                     <td>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
-                        {ingress.hosts?.map((host, idx) => (
-                          <span key={idx} style={{ 
-                            padding: '0.125rem 0.25rem', 
-                            backgroundColor: '#f0f9ff', 
-                            borderRadius: '3px', 
+                        {vs.hosts?.map((host, idx) => (
+                          <span key={idx} style={{
+                            padding: '0.125rem 0.25rem',
+                            backgroundColor: '#f0f9ff',
+                            borderRadius: '3px',
                             fontSize: '0.75rem',
                             color: '#1e40af'
                           }}>
@@ -294,7 +474,22 @@ const AdminResources = () => {
                         )) || 'None'}
                       </div>
                     </td>
-                    <td>{formatDate(ingress.created)}</td>
+                    <td>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
+                        {vs.gateways?.map((gateway, idx) => (
+                          <span key={idx} style={{
+                            padding: '0.125rem 0.25rem',
+                            backgroundColor: '#fef3c7',
+                            borderRadius: '3px',
+                            fontSize: '0.75rem',
+                            color: '#92400e'
+                          }}>
+                            {gateway}
+                          </span>
+                        )) || 'None'}
+                      </div>
+                    </td>
+                    <td>{formatDate(vs.createdAt)}</td>
                   </tr>
                 ))
               )}
@@ -302,6 +497,83 @@ const AdminResources = () => {
           </table>
         </div>
       )}
+
+      {/* Istio Gateways Tab */}
+      {activeTab === 'istiogateways' && (
+        <div className="table-container">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Namespace</th>
+                <th>Servers</th>
+                <th>Selector</th>
+                <th>Created</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(resources.istioGateways || []).length === 0 ? (
+                <tr>
+                  <td colSpan="5" style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
+                    No Istio gateways found
+                  </td>
+                </tr>
+              ) : (
+                (resources.istioGateways || []).map(gateway => (
+                  <tr key={`${gateway.namespace}-${gateway.name}`}>
+                    <td>
+                      <div style={{ fontWeight: '500' }}>{gateway.name}</div>
+                    </td>
+                    <td>
+                      <span style={{
+                        padding: '0.25rem 0.5rem',
+                        backgroundColor: '#f3f4f6',
+                        borderRadius: '4px',
+                        fontSize: '0.875rem'
+                      }}>
+                        {gateway.namespace}
+                      </span>
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
+                        {gateway.servers?.map((server, idx) => (
+                          <span key={idx} style={{
+                            padding: '0.125rem 0.25rem',
+                            backgroundColor: '#f0f9ff',
+                            borderRadius: '3px',
+                            fontSize: '0.75rem',
+                            color: '#1e40af'
+                          }}>
+                            {server}
+                          </span>
+                        )) || 'None'}
+                      </div>
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
+                        {Object.entries(gateway.selector || {}).map(([key, value], idx) => (
+                          <span key={idx} style={{
+                            padding: '0.125rem 0.25rem',
+                            backgroundColor: '#f0fdf4',
+                            borderRadius: '3px',
+                            fontSize: '0.75rem',
+                            color: '#15803d'
+                          }}>
+                            {key}={value}
+                          </span>
+                        ))}
+                        {Object.keys(gateway.selector || {}).length === 0 && 'None'}
+                      </div>
+                    </td>
+                    <td>{formatDate(gateway.createdAt)}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
     </div>
   );
 };
