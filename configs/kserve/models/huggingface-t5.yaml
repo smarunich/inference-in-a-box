@@ -12,4 +12,3 @@ spec:
       args:
         - --model_name=t5
         - --model_id=google-t5/t5-small
-        - --backend=huggingface
