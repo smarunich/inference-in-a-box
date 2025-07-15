@@ -163,6 +163,7 @@ func (s *AdminService) GetResources(c *gin.Context) {
 	gateways, err := s.k8sClient.GetGateways("")
 	if err != nil {
 		// Log error but continue - Gateway API might not be installed
+		log.Printf("Error getting gateways: %v", err)
 		gateways = []map[string]interface{}{}
 	}
 
