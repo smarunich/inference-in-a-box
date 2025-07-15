@@ -1201,6 +1201,7 @@ func (s *PublishingService) cleanupPublishedModelMetadata(namespace, modelName s
 	if err := s.k8sClient.DeletePublishedModelMetadata(namespace, modelName); err != nil {
 		log.Printf("Failed to cleanup published model metadata %s/%s: %v", namespace, modelName, err)
 	}
+}
 
 func (s *PublishingService) logPublishingEvent(user *User, modelName, namespace, action string) {
 	// Create audit log entry
