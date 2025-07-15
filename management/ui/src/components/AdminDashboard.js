@@ -7,7 +7,8 @@ import AdminSystem from './AdminSystem';
 import AdminLogs from './AdminLogs';
 import AdminResources from './AdminResources';
 import AdminKubectl from './AdminKubectl';
-import { LogOut, Shield, Database, Activity, Terminal, FileText, Settings, Users } from 'lucide-react';
+import PublishingDashboard from './PublishingDashboard';
+import { LogOut, Shield, Database, Activity, Terminal, FileText, Settings, Users, Globe } from 'lucide-react';
 
 const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState('models');
@@ -16,6 +17,7 @@ const AdminDashboard = () => {
   const tabs = [
     { id: 'models', label: 'Models', icon: Database, component: ModelList, description: 'Manage AI/ML models across all tenants' },
     { id: 'create', label: 'Create Model', icon: Settings, component: ModelForm, description: 'Deploy new models to any tenant' },
+    { id: 'publishing', label: 'Publishing', icon: Globe, component: PublishingDashboard, description: 'Publish models to external API endpoints' },
     { id: 'inference', label: 'Test Inference', icon: Activity, component: InferenceTest, description: 'Test model predictions' },
     { id: 'system', label: 'System Overview', icon: Shield, component: AdminSystem, description: 'Monitor cluster health and status' },
     { id: 'resources', label: 'Resources', icon: Users, component: AdminResources, description: 'View pods, services, and deployments' },
