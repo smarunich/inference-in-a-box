@@ -613,59 +613,7 @@ func (k *K8sClient) GetHTTPRoute(namespace, name string) (map[string]interface{}
 	return obj.Object, nil
 }
 
-// AIGatewayRoute CRUD operations
-func (k *K8sClient) CreateAIGatewayRoute(namespace string, route map[string]interface{}) error {
-	ctx := context.Background()
-	
-	// Convert to unstructured
-	obj := &unstructured.Unstructured{
-		Object: route,
-	}
-	obj.SetGroupVersionKind(AIGatewayRouteGVR.GroupVersion().WithKind("AIGatewayRoute"))
-	
-	// Create the AIGatewayRoute
-	_, err := k.dynamicClient.Resource(AIGatewayRouteGVR).Namespace(namespace).Create(ctx, obj, metav1.CreateOptions{})
-	if err != nil {
-		k.logError("CreateAIGatewayRoute", err)
-		return fmt.Errorf("failed to create AIGatewayRoute: %w", err)
-	}
-	
-	return nil
-}
-
-func (k *K8sClient) UpdateAIGatewayRoute(namespace, name string, route map[string]interface{}) error {
-	ctx := context.Background()
-	
-	// Convert to unstructured
-	obj := &unstructured.Unstructured{
-		Object: route,
-	}
-	obj.SetGroupVersionKind(AIGatewayRouteGVR.GroupVersion().WithKind("AIGatewayRoute"))
-	obj.SetName(name)
-	obj.SetNamespace(namespace)
-	
-	// Update the AIGatewayRoute
-	_, err := k.dynamicClient.Resource(AIGatewayRouteGVR).Namespace(namespace).Update(ctx, obj, metav1.UpdateOptions{})
-	if err != nil {
-		k.logError("UpdateAIGatewayRoute", err)
-		return fmt.Errorf("failed to update AIGatewayRoute: %w", err)
-	}
-	
-	return nil
-}
-
-func (k *K8sClient) DeleteAIGatewayRoute(namespace, name string) error {
-	ctx := context.Background()
-	
-	// Delete the AIGatewayRoute
-	err := k.dynamicClient.Resource(AIGatewayRouteGVR).Namespace(namespace).Delete(ctx, name, metav1.DeleteOptions{})
-	if err != nil {
-		k.logError("DeleteAIGatewayRoute", err)
-		return fmt.Errorf("failed to delete AIGatewayRoute: %w", err)
-	}
-	
-	return nil
-}
+// Removed duplicate AIGatewayRoute CRUD operations - using comprehensive versions later in file
 
 func (k *K8sClient) GetAIGatewayRoute(namespace, name string) (map[string]interface{}, error) {
 	ctx := context.Background()
@@ -680,59 +628,7 @@ func (k *K8sClient) GetAIGatewayRoute(namespace, name string) (map[string]interf
 	return obj.Object, nil
 }
 
-// BackendTrafficPolicy CRUD operations
-func (k *K8sClient) CreateBackendTrafficPolicy(namespace string, policy map[string]interface{}) error {
-	ctx := context.Background()
-	
-	// Convert to unstructured
-	obj := &unstructured.Unstructured{
-		Object: policy,
-	}
-	obj.SetGroupVersionKind(BackendTrafficPolicyGVR.GroupVersion().WithKind("BackendTrafficPolicy"))
-	
-	// Create the BackendTrafficPolicy
-	_, err := k.dynamicClient.Resource(BackendTrafficPolicyGVR).Namespace(namespace).Create(ctx, obj, metav1.CreateOptions{})
-	if err != nil {
-		k.logError("CreateBackendTrafficPolicy", err)
-		return fmt.Errorf("failed to create BackendTrafficPolicy: %w", err)
-	}
-	
-	return nil
-}
-
-func (k *K8sClient) UpdateBackendTrafficPolicy(namespace, name string, policy map[string]interface{}) error {
-	ctx := context.Background()
-	
-	// Convert to unstructured
-	obj := &unstructured.Unstructured{
-		Object: policy,
-	}
-	obj.SetGroupVersionKind(BackendTrafficPolicyGVR.GroupVersion().WithKind("BackendTrafficPolicy"))
-	obj.SetName(name)
-	obj.SetNamespace(namespace)
-	
-	// Update the BackendTrafficPolicy
-	_, err := k.dynamicClient.Resource(BackendTrafficPolicyGVR).Namespace(namespace).Update(ctx, obj, metav1.UpdateOptions{})
-	if err != nil {
-		k.logError("UpdateBackendTrafficPolicy", err)
-		return fmt.Errorf("failed to update BackendTrafficPolicy: %w", err)
-	}
-	
-	return nil
-}
-
-func (k *K8sClient) DeleteBackendTrafficPolicy(namespace, name string) error {
-	ctx := context.Background()
-	
-	// Delete the BackendTrafficPolicy
-	err := k.dynamicClient.Resource(BackendTrafficPolicyGVR).Namespace(namespace).Delete(ctx, name, metav1.DeleteOptions{})
-	if err != nil {
-		k.logError("DeleteBackendTrafficPolicy", err)
-		return fmt.Errorf("failed to delete BackendTrafficPolicy: %w", err)
-	}
-	
-	return nil
-}
+// Removed duplicate BackendTrafficPolicy CRUD operations - using comprehensive versions later in file
 
 func (k *K8sClient) GetBackendTrafficPolicy(namespace, name string) (map[string]interface{}, error) {
 	ctx := context.Background()

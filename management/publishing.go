@@ -3,7 +3,6 @@ package main
 import (
 	"crypto/rand"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -118,7 +117,7 @@ func (s *PublishingService) PublishModel(c *gin.Context) {
 	}
 
 	// Generate API key
-	apiKeyMetadata, apiKey, err := s.generateAPIKey(u, modelName, namespace, modelType)
+	_, apiKey, err := s.generateAPIKey(u, modelName, namespace, modelType)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{
 			Error:   "Failed to generate API key",
