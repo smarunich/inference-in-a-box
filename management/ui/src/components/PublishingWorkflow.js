@@ -31,8 +31,8 @@ const PublishingWorkflow = ({ modelName, onComplete, onCancel }) => {
       burstLimit: 10
     },
     authentication: {
-      type: 'apikey',
-      keyExpiration: ''
+      requireApiKey: true,
+      allowedTenants: []
     },
     metadata: {}
   });
@@ -479,16 +479,33 @@ const PublishingWorkflow = ({ modelName, onComplete, onCancel }) => {
             Authentication
           </h4>
           <div className="form-group">
-            <label>Authentication Type</label>
+            <label>Require API Key</label>
             <select
-              value={publishConfig.authentication.type}
-              onChange={(e) => handleConfigChange('authentication.type', e.target.value)}
+              value={publishConfig.authentication.requireApiKey}
+              onChange={(e) => handleConfigChange('authentication.requireApiKey', e.target.value === 'true')}
               className="form-control"
             >
-              <option value="apikey">API Key</option>
+              <option value={true}>Yes</option>
+              <option value={false}>No</option>
             </select>
             <div style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '0.25rem' }}>
               A secure API key will be generated for external access
+            </div>
+          </div>
+          
+          <div className="form-group">
+            <label>Allowed Tenants (Optional)</label>
+            <input
+              type="text"
+              value={publishConfig.authentication.allowedTenants.join(', ')}
+              onChange={(e) => handleConfigChange('authentication.allowedTenants', 
+                e.target.value.split(',').map(t => t.trim()).filter(t => t)
+              )}
+              className="form-control"
+              placeholder="tenant-a, tenant-b"
+            />
+            <div style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '0.25rem' }}>
+              Comma-separated list of tenants allowed to access this model (leave empty for all)
             </div>
           </div>
         </div>
@@ -546,6 +563,16 @@ const PublishingWorkflow = ({ modelName, onComplete, onCancel }) => {
               <div style={{ fontWeight: '500', marginBottom: '0.25rem' }}>Rate Limit</div>
               <div>{publishConfig.rateLimiting.requestsPerMinute}/min</div>
             </div>
+            <div>
+              <div style={{ fontWeight: '500', marginBottom: '0.25rem' }}>Authentication</div>
+              <div>{publishConfig.authentication.requireApiKey ? 'API Key Required' : 'No Authentication'}</div>
+            </div>
+            {publishConfig.authentication.allowedTenants.length > 0 && (
+              <div>
+                <div style={{ fontWeight: '500', marginBottom: '0.25rem' }}>Allowed Tenants</div>
+                <div>{publishConfig.authentication.allowedTenants.join(', ')}</div>
+              </div>
+            )}
           </div>
         </div>
 

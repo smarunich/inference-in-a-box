@@ -16,8 +16,8 @@ const PublishingForm = ({ modelName, onComplete, onCancel }) => {
       burstLimit: 10
     },
     authentication: {
-      type: 'apikey',
-      keyExpiration: ''
+      requireApiKey: true,
+      allowedTenants: []
     },
     metadata: {}
   });
@@ -92,7 +92,11 @@ const PublishingForm = ({ modelName, onComplete, onCancel }) => {
         tenantId: publishedModel.tenantID,
         modelType: publishedModel.modelType,
         externalPath: publishedModel.externalURL?.split('/').pop() || '',
-        rateLimiting: publishedModel.rateLimiting || prev.rateLimiting
+        rateLimiting: publishedModel.rateLimiting || prev.rateLimiting,
+        authentication: {
+          requireApiKey: true, // Always true for existing published models
+          allowedTenants: publishedModel.authentication?.allowedTenants || []
+        }
       }));
     } catch (error) {
       // Model is not published, which is fine
@@ -361,14 +365,21 @@ const PublishingForm = ({ modelName, onComplete, onCancel }) => {
           </h3>
           
           <div className="form-group">
-            <label>Authentication Type</label>
+            <label>Require API Key</label>
             <select
-              name="authentication.type"
-              value={formData.authentication.type}
-              onChange={handleInputChange}
+              name="authentication.requireApiKey"
+              value={formData.authentication.requireApiKey}
+              onChange={(e) => setFormData(prev => ({
+                ...prev,
+                authentication: {
+                  ...prev.authentication,
+                  requireApiKey: e.target.value === 'true'
+                }
+              }))}
               className="form-control"
             >
-              <option value="apikey">API Key</option>
+              <option value={true}>Yes</option>
+              <option value={false}>No</option>
             </select>
             <div style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '0.25rem' }}>
               A secure API key will be generated for external access
@@ -376,16 +387,23 @@ const PublishingForm = ({ modelName, onComplete, onCancel }) => {
           </div>
 
           <div className="form-group">
-            <label>Key Expiration (Optional)</label>
+            <label>Allowed Tenants (Optional)</label>
             <input
-              type="datetime-local"
-              name="authentication.keyExpiration"
-              value={formData.authentication.keyExpiration}
-              onChange={handleInputChange}
+              type="text"
+              name="authentication.allowedTenants"
+              value={formData.authentication.allowedTenants.join(', ')}
+              onChange={(e) => setFormData(prev => ({
+                ...prev,
+                authentication: {
+                  ...prev.authentication,
+                  allowedTenants: e.target.value.split(',').map(t => t.trim()).filter(t => t)
+                }
+              }))}
               className="form-control"
+              placeholder="tenant-a, tenant-b"
             />
             <div style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '0.25rem' }}>
-              Leave empty for no expiration
+              Comma-separated list of tenants allowed to access this model (leave empty for all)
             </div>
           </div>
         </div>
