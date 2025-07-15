@@ -2,289 +2,38 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
-	"time"
 
-	"gopkg.in/yaml.v3"
+	"gopkg.in/yaml.v2"
 )
 
-// ExecuteCommand executes a system command and returns the output
+// ExecuteCommand executes a shell command and returns the output
 func ExecuteCommand(command string) (string, error) {
-	cmd := exec.Command("sh", "-c", command)
-	output, err := cmd.CombinedOutput()
-	
-	if err != nil {
-		return "", fmt.Errorf("command failed: %s, output: %s", err.Error(), string(output))
+	parts := strings.Fields(command)
+	if len(parts) == 0 {
+		return "", fmt.Errorf("empty command")
 	}
 	
-	return strings.TrimSpace(string(output)), nil
+	cmd := exec.Command(parts[0], parts[1:]...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return string(output), fmt.Errorf("command failed: %w", err)
+	}
+	
+	return string(output), nil
 }
 
 // ToYAML converts a map to YAML string
-func ToYAML(data interface{}) (string, error) {
-	yamlData, err := yaml.Marshal(data)
+func ToYAML(data map[string]interface{}) (string, error) {
+	yamlBytes, err := yaml.Marshal(data)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal to YAML: %w", err)
 	}
-	
-	return string(yamlData), nil
+	return string(yamlBytes), nil
 }
 
-// GenerateModelYAML generates InferenceService YAML
-func GenerateModelYAML(modelName, tenant string, config ModelConfig) (map[string]interface{}, error) {
-	// Set defaults
-	minReplicas := config.MinReplicas
-	if minReplicas == 0 {
-		minReplicas = 1
-	}
-	
-	maxReplicas := config.MaxReplicas
-	if maxReplicas == 0 {
-		maxReplicas = 3
-	}
-	
-	scaleTarget := config.ScaleTarget
-	if scaleTarget == 0 {
-		scaleTarget = 60
-	}
-	
-	scaleMetric := config.ScaleMetric
-	if scaleMetric == "" {
-		scaleMetric = "concurrency"
-	}
-	
-	// Build the predictor configuration
-	predictor := map[string]interface{}{
-		"minReplicas": minReplicas,
-		"maxReplicas": maxReplicas,
-		"scaleTarget": scaleTarget,
-		"scaleMetric": scaleMetric,
-	}
-	
-	// Add framework-specific configuration
-	predictor[config.Framework] = map[string]interface{}{
-		"storageUri": config.StorageUri,
-	}
-	
-	// Create the InferenceService specification
-	modelSpec := map[string]interface{}{
-		"apiVersion": "serving.kserve.io/v1beta1",
-		"kind":       "InferenceService",
-		"metadata": map[string]interface{}{
-			"name":      modelName,
-			"namespace": tenant,
-		},
-		"spec": map[string]interface{}{
-			"predictor": predictor,
-		},
-	}
-	
-	return modelSpec, nil
-}
-
-// ParseModelStatus parses model status from Kubernetes object
-func ParseModelStatus(obj map[string]interface{}) ModelStatusDetails {
-	status := ModelStatusDetails{
-		Ready:      false,
-		Phase:      "Unknown",
-		Conditions: []ModelCondition{},
-		Components: make(map[string]*ModelComponent),
-		Replicas:   ModelReplicas{},
-	}
-	
-	// Extract status from the object
-	statusObj, ok := obj["status"].(map[string]interface{})
-	if !ok {
-		return status
-	}
-	
-	// Extract conditions
-	if conditionsRaw, ok := statusObj["conditions"].([]interface{}); ok {
-		for _, conditionRaw := range conditionsRaw {
-			if condition, ok := conditionRaw.(map[string]interface{}); ok {
-				modelCondition := ModelCondition{}
-				
-				if condType, ok := condition["type"].(string); ok {
-					modelCondition.Type = condType
-				}
-				if condStatus, ok := condition["status"].(string); ok {
-					modelCondition.Status = condStatus
-				}
-				if reason, ok := condition["reason"].(string); ok {
-					modelCondition.Reason = reason
-				}
-				if message, ok := condition["message"].(string); ok {
-					modelCondition.Message = message
-				}
-				if lastTransition, ok := condition["lastTransitionTime"].(string); ok {
-					if t, err := time.Parse(time.RFC3339, lastTransition); err == nil {
-						modelCondition.LastTransitionTime = t
-					}
-				}
-				
-				status.Conditions = append(status.Conditions, modelCondition)
-			}
-		}
-	}
-	
-	// Determine readiness
-	ready := false
-	phase := "Unknown"
-	
-	// Look for Ready condition
-	for _, condition := range status.Conditions {
-		if condition.Type == "Ready" {
-			ready = condition.Status == "True"
-			phase = condition.Status
-			break
-		}
-	}
-	
-	// Fallback: check if any condition is True
-	if !ready {
-		for _, condition := range status.Conditions {
-			if condition.Status == "True" {
-				ready = true
-				phase = "True"
-				break
-			}
-		}
-	}
-	
-	// Additional check: if model has a URL, it's likely ready
-	if url, ok := statusObj["url"].(string); ok && url != "" {
-		status.URL = url
-		if !ready {
-			ready = true
-			phase = "True"
-		}
-	}
-	
-	status.Ready = ready
-	status.Phase = phase
-	
-	// Extract observed generation
-	if gen, ok := statusObj["observedGeneration"].(float64); ok {
-		status.ObservedGeneration = int64(gen)
-	}
-	
-	// Extract component statuses
-	if components, ok := statusObj["components"].(map[string]interface{}); ok {
-		// Predictor component
-		if predictor, ok := components["predictor"].(map[string]interface{}); ok {
-			component := &ModelComponent{}
-			
-			// Check for predictor ready condition
-			for _, condition := range status.Conditions {
-				if condition.Type == "PredictorReady" {
-					component.Ready = condition.Status == "True"
-					break
-				}
-			}
-			
-			if url, ok := predictor["url"].(string); ok {
-				component.URL = url
-			}
-			if traffic, ok := predictor["traffic"].(float64); ok {
-				component.Traffic = int(traffic)
-			}
-			
-			status.Components["predictor"] = component
-		}
-		
-		// Transformer component
-		if transformer, ok := components["transformer"].(map[string]interface{}); ok {
-			component := &ModelComponent{}
-			
-			for _, condition := range status.Conditions {
-				if condition.Type == "TransformerReady" {
-					component.Ready = condition.Status == "True"
-					break
-				}
-			}
-			
-			if url, ok := transformer["url"].(string); ok {
-				component.URL = url
-			}
-			if traffic, ok := transformer["traffic"].(float64); ok {
-				component.Traffic = int(traffic)
-			}
-			
-			status.Components["transformer"] = component
-		}
-		
-		// Explainer component
-		if explainer, ok := components["explainer"].(map[string]interface{}); ok {
-			component := &ModelComponent{}
-			
-			for _, condition := range status.Conditions {
-				if condition.Type == "ExplainerReady" {
-					component.Ready = condition.Status == "True"
-					break
-				}
-			}
-			
-			if url, ok := explainer["url"].(string); ok {
-				component.URL = url
-			}
-			if traffic, ok := explainer["traffic"].(float64); ok {
-				component.Traffic = int(traffic)
-			}
-			
-			status.Components["explainer"] = component
-		}
-	}
-	
-	// Extract replica information
-	if replicas, ok := statusObj["replicas"].(map[string]interface{}); ok {
-		if ready, ok := replicas["ready"].(float64); ok {
-			status.Replicas.Ready = int(ready)
-		}
-		if total, ok := replicas["total"].(float64); ok {
-			status.Replicas.Total = int(total)
-		}
-	}
-	
-	// Extract spec for desired replicas
-	if specObj, ok := obj["spec"].(map[string]interface{}); ok {
-		if predictor, ok := specObj["predictor"].(map[string]interface{}); ok {
-			if maxReplicas, ok := predictor["maxReplicas"].(float64); ok {
-				status.Replicas.Desired = int(maxReplicas)
-			}
-		}
-	}
-	
-	// Extract other fields
-	if modelCopies, ok := statusObj["modelCopies"]; ok {
-		status.ModelCopies = modelCopies
-	}
-	if traffic, ok := statusObj["traffic"]; ok {
-		status.Traffic = traffic
-	}
-	if address, ok := statusObj["address"]; ok {
-		status.Address = address
-	}
-	if revision, ok := statusObj["latestCreatedRevision"].(string); ok {
-		status.LatestCreatedRevision = revision
-	}
-	if revision, ok := statusObj["latestReadyRevision"].(string); ok {
-		status.LatestReadyRevision = revision
-	}
-	
-	// Extract error message from failed conditions
-	for _, condition := range status.Conditions {
-		if condition.Status == "False" && condition.Message != "" {
-			status.Error = condition.Message
-			break
-		}
-	}
-	
-	return status
-}
-
-// ConvertToModelInfo converts Kubernetes object to ModelInfo
+// ConvertToModelInfo converts a Kubernetes object to ModelInfo
 func ConvertToModelInfo(obj map[string]interface{}) ModelInfo {
 	modelInfo := ModelInfo{
 		Metadata: make(map[string]interface{}),
@@ -299,102 +48,123 @@ func ConvertToModelInfo(obj map[string]interface{}) ModelInfo {
 			modelInfo.Namespace = namespace
 		}
 		if creationTimestamp, ok := metadata["creationTimestamp"].(string); ok {
-			if t, err := time.Parse(time.RFC3339, creationTimestamp); err == nil {
+			if t, err := parseTime(creationTimestamp); err == nil {
 				modelInfo.CreatedAt = t
 			}
 		}
-		
-		// Extract metadata details
-		if labels, ok := metadata["labels"]; ok {
-			modelInfo.Metadata["labels"] = labels
-		}
-		if annotations, ok := metadata["annotations"]; ok {
-			modelInfo.Metadata["annotations"] = annotations
-		}
-		if generation, ok := metadata["generation"].(float64); ok {
-			modelInfo.Metadata["generation"] = int64(generation)
-		}
-		if resourceVersion, ok := metadata["resourceVersion"].(string); ok {
-			modelInfo.Metadata["resourceVersion"] = resourceVersion
-		}
-		if uid, ok := metadata["uid"].(string); ok {
-			modelInfo.Metadata["uid"] = uid
-		}
+		modelInfo.Metadata = metadata
 	}
 	
 	// Extract spec
-	if spec, ok := obj["spec"]; ok {
+	if spec, ok := obj["spec"].(map[string]interface{}); ok {
 		modelInfo.Spec = spec
-		if predictor, ok := spec.(map[string]interface{})["predictor"]; ok {
+		if predictor, ok := spec["predictor"].(map[string]interface{}); ok {
 			modelInfo.Predictor = predictor
 		}
 	}
 	
 	// Extract status
-	if status, ok := obj["status"]; ok {
+	if status, ok := obj["status"].(map[string]interface{}); ok {
 		modelInfo.FullStatus = status
+		
+		// Parse status details
+		statusDetails := ModelStatusDetails{
+			Components: make(map[string]*ModelComponent),
+		}
+		
+		// Check ready condition
+		if conditions, ok := status["conditions"].([]interface{}); ok {
+			for _, condition := range conditions {
+				if cond, ok := condition.(map[string]interface{}); ok {
+					condType, _ := cond["type"].(string)
+					condStatus, _ := cond["status"].(string)
+					
+					if condType == "Ready" {
+						modelInfo.Ready = condStatus == "True"
+						statusDetails.Ready = modelInfo.Ready
+					}
+					
+					// Convert condition
+					modelCondition := ModelCondition{
+						Type:   condType,
+						Status: condStatus,
+					}
+					if reason, ok := cond["reason"].(string); ok {
+						modelCondition.Reason = reason
+					}
+					if message, ok := cond["message"].(string); ok {
+						modelCondition.Message = message
+					}
+					if lastTransitionTime, ok := cond["lastTransitionTime"].(string); ok {
+						if t, err := parseTime(lastTransitionTime); err == nil {
+							modelCondition.LastTransitionTime = t
+						}
+					}
+					
+					statusDetails.Conditions = append(statusDetails.Conditions, modelCondition)
+				}
+			}
+		}
+		
+		// Extract URL
+		if url, ok := status["url"].(string); ok {
+			modelInfo.URL = url
+			statusDetails.URL = url
+		}
+		
+		// Extract phase
+		if phase, ok := status["phase"].(string); ok {
+			statusDetails.Phase = phase
+		}
+		
+		// Extract observed generation
+		if observedGeneration, ok := status["observedGeneration"].(float64); ok {
+			statusDetails.ObservedGeneration = int64(observedGeneration)
+		}
+		
+		// Extract components
+		if components, ok := status["components"].(map[string]interface{}); ok {
+			for name, component := range components {
+				if comp, ok := component.(map[string]interface{}); ok {
+					modelComponent := &ModelComponent{}
+					if ready, ok := comp["ready"].(bool); ok {
+						modelComponent.Ready = ready
+					}
+					if url, ok := comp["url"].(string); ok {
+						modelComponent.URL = url
+					}
+					if traffic, ok := comp["traffic"].(float64); ok {
+						modelComponent.Traffic = int(traffic)
+					}
+					statusDetails.Components[name] = modelComponent
+				}
+			}
+		}
+		
+		// Extract replicas information
+		if address, ok := status["address"].(map[string]interface{}); ok {
+			if url, ok := address["url"].(string); ok && modelInfo.URL == "" {
+				modelInfo.URL = url
+				statusDetails.URL = url
+			}
+		}
+		
+		// Set model status
+		if modelInfo.Ready {
+			modelInfo.Status = "Ready"
+		} else if statusDetails.Phase != "" {
+			modelInfo.Status = statusDetails.Phase
+		} else {
+			modelInfo.Status = "Not Ready"
+		}
+		
+		modelInfo.StatusDetails = statusDetails
 	}
-	
-	// Parse detailed status
-	statusDetails := ParseModelStatus(obj)
-	modelInfo.StatusDetails = statusDetails
-	
-	// Set top-level fields for backward compatibility
-	modelInfo.Status = statusDetails.Phase
-	modelInfo.Ready = statusDetails.Ready
-	modelInfo.URL = statusDetails.URL
 	
 	return modelInfo
 }
 
-// WriteToTempFile writes content to a temporary file
-func WriteToTempFile(content string, prefix string) (string, error) {
-	tempFile, err := os.CreateTemp("", prefix)
-	if err != nil {
-		return "", fmt.Errorf("failed to create temp file: %w", err)
-	}
-	defer tempFile.Close()
-	
-	if _, err := tempFile.WriteString(content); err != nil {
-		return "", fmt.Errorf("failed to write to temp file: %w", err)
-	}
-	
-	return tempFile.Name(), nil
-}
-
-// DeleteTempFile removes a temporary file
-func DeleteTempFile(filename string) error {
-	if err := os.Remove(filename); err != nil {
-		return fmt.Errorf("failed to remove temp file: %w", err)
-	}
-	return nil
-}
-
-// GetStringFromMap safely extracts a string value from a map
-func GetStringFromMap(m map[string]interface{}, key string) string {
-	if value, ok := m[key].(string); ok {
-		return value
-	}
-	return ""
-}
-
-// GetIntFromMap safely extracts an int value from a map
-func GetIntFromMap(m map[string]interface{}, key string) int {
-	if value, ok := m[key].(float64); ok {
-		return int(value)
-	}
-	return 0
-}
-
-// GetBoolFromMap safely extracts a bool value from a map
-func GetBoolFromMap(m map[string]interface{}, key string) bool {
-	if value, ok := m[key].(bool); ok {
-		return value
-	}
-	return false
-}
-
-// IsResourceNotFoundError checks if an error is a "not found" error
-func IsResourceNotFoundError(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "not found")
+// parseTime parses RFC3339 time string
+func parseTime(timeStr string) (time.Time, error) {
+	return time.Parse(time.RFC3339, timeStr)
 }

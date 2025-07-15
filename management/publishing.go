@@ -85,11 +85,21 @@ func (s *PublishingService) PublishModel(c *gin.Context) {
 		return
 	}
 
-	// Check if model exists and is ready
-	if err := s.validateModelExists(namespace, modelName); err != nil {
+	// Create error reporter and rollback handler
+	errorReporter := NewErrorReporter(s)
+	rollback := NewPublishingRollback(s, namespace, modelName)
+	
+	// Validate publishing request
+	validator := NewPublishingValidator(s)
+	if validationErrors := validator.ValidatePublishRequest(namespace, modelName, req.Config); len(validationErrors) > 0 {
+		var errorMessages []string
+		for _, err := range validationErrors {
+			errorMessages = append(errorMessages, err.Error())
+		}
+		
 		c.JSON(http.StatusBadRequest, ErrorResponse{
-			Error:   "Model validation failed",
-			Details: err.Error(),
+			Error:   "Validation failed",
+			Details: strings.Join(errorMessages, "; "),
 		})
 		return
 	}
@@ -107,53 +117,61 @@ func (s *PublishingService) PublishModel(c *gin.Context) {
 	if modelType == "" {
 		detectedType, err := s.detectModelType(namespace, modelName)
 		if err != nil {
+			publishingErr := NewPublishingError(ErrModelNotFound, "Failed to detect model type", namespace, modelName, "model_detection", err)
+			errorReporter.ReportError(u, namespace, modelName, "detect_model_type", publishingErr)
 			c.JSON(http.StatusInternalServerError, ErrorResponse{
-				Error:   "Failed to detect model type",
-				Details: err.Error(),
+				Error:   publishingErr.Message,
+				Details: publishingErr.Details,
 			})
 			return
 		}
 		modelType = detectedType
 	}
 
-	// Generate API key
+	// Step 1: Generate API key
 	_, apiKey, err := s.generateAPIKey(u, modelName, namespace, modelType)
 	if err != nil {
+		publishingErr := NewPublishingError(ErrAPIKeyGenerationFailed, "Failed to generate API key", namespace, modelName, "api_key_generation", err)
+		errorReporter.ReportError(u, namespace, modelName, "generate_api_key", publishingErr)
 		c.JSON(http.StatusInternalServerError, ErrorResponse{
-			Error:   "Failed to generate API key",
-			Details: err.Error(),
+			Error:   publishingErr.Message,
+			Details: publishingErr.Details,
 		})
 		return
 	}
+	rollback.AddStep("api_key")
 
-	// Create gateway configuration
+	// Step 2: Create gateway configuration
 	externalURL, err := s.createGatewayConfiguration(namespace, modelName, modelType, req.Config)
 	if err != nil {
-		// Cleanup API key on failure
-		s.cleanupAPIKey(namespace, modelName)
+		publishingErr := NewPublishingError(ErrGatewayConfigFailed, "Failed to create gateway configuration", namespace, modelName, "gateway_config", err)
+		errorReporter.ReportError(u, namespace, modelName, "create_gateway_config", publishingErr)
+		rollback.Execute()
 		c.JSON(http.StatusInternalServerError, ErrorResponse{
-			Error:   "Failed to create gateway configuration",
-			Details: err.Error(),
+			Error:   publishingErr.Message,
+			Details: publishingErr.Details,
 		})
 		return
 	}
+	rollback.AddStep("gateway_config")
 
-	// Create rate limiting policy
+	// Step 3: Create rate limiting policy
 	if err := s.createRateLimitingPolicy(namespace, modelName, req.Config.RateLimiting); err != nil {
-		// Cleanup on failure
-		s.cleanupAPIKey(namespace, modelName)
-		s.cleanupGatewayConfiguration(namespace, modelName)
+		publishingErr := NewPublishingError(ErrRateLimitConfigFailed, "Failed to create rate limiting policy", namespace, modelName, "rate_limiting", err)
+		errorReporter.ReportError(u, namespace, modelName, "create_rate_limiting", publishingErr)
+		rollback.Execute()
 		c.JSON(http.StatusInternalServerError, ErrorResponse{
-			Error:   "Failed to create rate limiting policy",
-			Details: err.Error(),
+			Error:   publishingErr.Message,
+			Details: publishingErr.Details,
 		})
 		return
 	}
+	rollback.AddStep("rate_limiting")
 
-	// Generate documentation
+	// Step 4: Generate documentation
 	documentation := s.generateAPIDocumentation(namespace, modelName, modelType, externalURL, apiKey)
 
-	// Create published model response
+	// Step 5: Create published model response
 	publishedModel := PublishedModel{
 		ModelName:     modelName,
 		Namespace:     namespace,
@@ -169,18 +187,18 @@ func (s *PublishingService) PublishModel(c *gin.Context) {
 		Documentation: documentation,
 	}
 
-	// Store published model metadata
+	// Step 6: Store published model metadata
 	if err := s.storePublishedModelMetadata(namespace, modelName, publishedModel); err != nil {
-		// Cleanup on failure
-		s.cleanupAPIKey(namespace, modelName)
-		s.cleanupGatewayConfiguration(namespace, modelName)
-		s.cleanupRateLimitingPolicy(namespace, modelName)
+		publishingErr := NewPublishingError("METADATA_STORAGE_FAILED", "Failed to store published model metadata", namespace, modelName, "metadata_storage", err)
+		errorReporter.ReportError(u, namespace, modelName, "store_metadata", publishingErr)
+		rollback.Execute()
 		c.JSON(http.StatusInternalServerError, ErrorResponse{
-			Error:   "Failed to store published model metadata",
-			Details: err.Error(),
+			Error:   publishingErr.Message,
+			Details: publishingErr.Details,
 		})
 		return
 	}
+	rollback.AddStep("metadata")
 
 	// Log the publishing event
 	s.logPublishingEvent(u, modelName, namespace, "published")
@@ -1088,6 +1106,118 @@ func (s *PublishingService) validateAPIKey(apiKey string) (*APIKeyMetadata, erro
 				if modelName, ok := secret["modelName"].(string); ok {
 					metadata.ModelName = modelName
 				}
+				if tenantID, ok := secret["tenantId"].(string); ok {
+					metadata.TenantID = tenantID
+				}
+				if modelType, ok := secret["modelType"].(string); ok {
+					metadata.ModelType = modelType
+				}
+				if createdAt, ok := secret["createdAt"].(string); ok {
+					if t, err := time.Parse(time.RFC3339, createdAt); err == nil {
+						metadata.CreatedAt = t
+					}
+				}
+				if permissions, ok := secret["permissions"].(string); ok {
+					metadata.Permissions = strings.Split(permissions, ",")
+				}
+				
+				return metadata, nil
+			}
+		}
+	}
+	
+	return nil, fmt.Errorf("API key not found")
+}
+
+func (s *PublishingService) updateAPIKeyLastUsed(namespace, modelName string) {
+	secretName := fmt.Sprintf("published-model-apikey-%s", modelName)
+	
+	// Get current secret
+	secret, err := s.k8sClient.GetAPIKeySecret(namespace, secretName)
+	if err != nil {
+		// Log error but don't fail the request
+		log.Printf("Failed to get API key secret for last used update: %v", err)
+		return
+	}
+	
+	// Update last used timestamp
+	secret["lastUsed"] = time.Now().Format(time.RFC3339)
+	
+	// Update the secret
+	if err := s.k8sClient.UpdateAPIKeySecret(namespace, secretName, secret); err != nil {
+		// Log error but don't fail the request
+		log.Printf("Failed to update API key last used timestamp: %v", err)
+	}
+}
+
+func (s *PublishingService) logPublishingEvent(user *User, modelName, namespace, action string) {
+	// Create audit log entry
+	logEntry := map[string]interface{}{
+		"timestamp": time.Now().Format(time.RFC3339),
+		"user":      user.Name,
+		"tenant":    user.Tenant,
+		"action":    action,
+		"model":     modelName,
+		"namespace": namespace,
+		"userAgent": "management-service",
+	}
+	
+	// Store in ConfigMap for audit trail
+	auditLogName := fmt.Sprintf("publishing-audit-%s", time.Now().Format("2006-01-02"))
+	
+	// Try to get existing audit log for today
+	existingLog, err := s.k8sClient.GetConfigMap(namespace, auditLogName)
+	if err != nil {
+		// Create new audit log
+		auditData := map[string]interface{}{
+			"entries": []interface{}{logEntry},
+		}
+		s.k8sClient.CreateConfigMap(namespace, auditLogName, auditData)
+	} else {
+		// Append to existing audit log
+		if entries, ok := existingLog["entries"].([]interface{}); ok {
+			entries = append(entries, logEntry)
+			existingLog["entries"] = entries
+			s.k8sClient.UpdateConfigMap(namespace, auditLogName, existingLog)
+		}
+	}
+}
+
+// Cleanup methods
+func (s *PublishingService) cleanupAPIKey(namespace, modelName string) {
+	secretName := fmt.Sprintf("published-model-apikey-%s", modelName)
+	
+	if err := s.k8sClient.DeleteAPIKeySecret(namespace, secretName); err != nil {
+		log.Printf("Failed to cleanup API key secret %s/%s: %v", namespace, secretName, err)
+	}
+}
+
+func (s *PublishingService) cleanupGatewayConfiguration(namespace, modelName string) {
+	routeName := fmt.Sprintf("published-model-%s-%s", namespace, modelName)
+	
+	// Delete HTTPRoute
+	if err := s.k8sClient.DeleteHTTPRoute("envoy-gateway-system", routeName); err != nil {
+		log.Printf("Failed to cleanup HTTPRoute %s: %v", routeName, err)
+	}
+	
+	// Delete AIGatewayRoute
+	if err := s.k8sClient.DeleteAIGatewayRoute("envoy-gateway-system", routeName); err != nil {
+		log.Printf("Failed to cleanup AIGatewayRoute %s: %v", routeName, err)
+	}
+}
+
+func (s *PublishingService) cleanupRateLimitingPolicy(namespace, modelName string) {
+	policyName := fmt.Sprintf("published-model-rate-limit-%s-%s", namespace, modelName)
+	
+	if err := s.k8sClient.DeleteBackendTrafficPolicy("envoy-gateway-system", policyName); err != nil {
+		log.Printf("Failed to cleanup BackendTrafficPolicy %s: %v", policyName, err)
+	}
+}
+
+func (s *PublishingService) cleanupPublishedModelMetadata(namespace, modelName string) {
+	if err := s.k8sClient.DeletePublishedModelMetadata(namespace, modelName); err != nil {
+		log.Printf("Failed to cleanup published model metadata %s/%s: %v", namespace, modelName, err)
+	}
 				if tenantID, ok := secret["tenantId"].(string); ok {
 					metadata.TenantID = tenantID
 				}

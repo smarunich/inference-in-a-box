@@ -176,12 +176,9 @@ const ModelList = () => {
   };
 
   const handlePublish = (modelName) => {
-    if (!window.confirm(`Are you sure you want to publish model "${modelName}" for external access?`)) {
-      return;
-    }
-    
-    // For now, just show a toast. In a full implementation, this would open a publishing form
-    toast.success(`Publishing feature for "${modelName}" - UI implementation in progress`);
+    // Navigate to publishing workflow
+    window.location.hash = '#publishing';
+    toast.success(`Opening publishing workflow for "${modelName}"`);
   };
 
   const filteredModels = models.filter(model => {

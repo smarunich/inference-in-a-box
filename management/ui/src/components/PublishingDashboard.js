@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { Plus, Globe, Activity, TrendingUp, Users, AlertCircle } from 'lucide-react';
 import PublishingList from './PublishingList';
 import PublishingForm from './PublishingForm';
+import PublishingWorkflow from './PublishingWorkflow';
 
 const PublishingDashboard = () => {
   const [models, setModels] = useState([]);
@@ -226,11 +227,85 @@ const PublishingDashboard = () => {
                     {model.namespace} • Ready
                   </div>
                 </div>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => handlePublishModel(model.name)}
+                  >
+                    Quick Publish
+                  </button>
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => {
+                      setPublishingModel(model.name);
+                      setActiveTab('workflow');
+                    }}
+                  >
+                    Guided Workflow
+                  </button>
+                </div>
+              </div>
+            ))}
+            {getReadyModels().length === 0 && (
+              <div style={{ 
+                padding: '2rem', 
+                textAlign: 'center', 
+                color: '#6b7280' 
+              }}>
+                No models available for publishing
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderWorkflow = () => (
+    <div>
+      {publishingModel ? (
+        <PublishingWorkflow 
+          modelName={publishingModel}
+          onComplete={handlePublishComplete}
+          onCancel={() => {
+            setPublishingModel(null);
+            setActiveTab('overview');
+          }}
+        />
+      ) : (
+        <div className="card">
+          <h3>Select a Model for Guided Publishing</h3>
+          <p style={{ color: '#6b7280', marginBottom: '1.5rem' }}>
+            The guided workflow will walk you through model validation, configuration, and publishing with detailed explanations.
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {getReadyModels().map(model => (
+              <div 
+                key={model.name}
+                style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center',
+                  padding: '1rem',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: '6px'
+                }}
+              >
+                <div>
+                  <div style={{ fontWeight: '500' }}>{model.name}</div>
+                  <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                    {model.namespace} • Ready • Framework: {Object.keys(model.predictor || {}).find(key => 
+                      !['minReplicas', 'maxReplicas', 'scaleTarget', 'scaleMetric'].includes(key)
+                    ) || 'Unknown'}
+                  </div>
+                </div>
                 <button
                   className="btn btn-primary"
-                  onClick={() => handlePublishModel(model.name)}
+                  onClick={() => {
+                    setPublishingModel(model.name);
+                  }}
                 >
-                  Publish
+                  Start Workflow
                 </button>
               </div>
             ))}
@@ -269,7 +344,13 @@ const PublishingDashboard = () => {
           className={`nav-tab ${activeTab === 'publish' ? 'active' : ''}`}
           onClick={() => setActiveTab('publish')}
         >
-          Publish Model
+          Quick Publish
+        </button>
+        <button
+          className={`nav-tab ${activeTab === 'workflow' ? 'active' : ''}`}
+          onClick={() => setActiveTab('workflow')}
+        >
+          Guided Workflow
         </button>
       </div>
 
@@ -277,6 +358,7 @@ const PublishingDashboard = () => {
       {activeTab === 'overview' && renderOverview()}
       {activeTab === 'published' && <PublishingList />}
       {activeTab === 'publish' && renderPublishForm()}
+      {activeTab === 'workflow' && renderWorkflow()}
     </div>
   );
 };
