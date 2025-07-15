@@ -64,7 +64,7 @@ const PublishingList = () => {
       setPublishedModels(prev => 
         prev.map(model => 
           model.modelName === modelName 
-            ? { ...model, apiKey: response.data.newAPIKey, updatedAt: response.data.updatedAt }
+            ? { ...model, apiKey: response.data.newApiKey, updatedAt: response.data.updatedAt }
             : model
         )
       );
