@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -24,7 +25,7 @@ func NewAdminService(k8sClient *K8sClient) *AdminService {
 
 // GetSystemInfo handles GET /api/admin/system
 func (s *AdminService) GetSystemInfo(c *gin.Context) {
-	// Get nodes
+	// Get nodes 
 	nodes, err := s.k8sClient.GetNodes()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{
