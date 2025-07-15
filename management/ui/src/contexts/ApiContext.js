@@ -58,6 +58,14 @@ export const ApiProvider = ({ children }) => {
     // Frameworks
     getFrameworks: () => api.get('/frameworks'),
     
+    // Model Publishing
+    publishModel: (modelName, publishConfig) => api.post(`/models/${modelName}/publish`, publishConfig),
+    unpublishModel: (modelName) => api.delete(`/models/${modelName}/publish`),
+    getPublishedModel: (modelName) => api.get(`/models/${modelName}/publish`),
+    getPublishedModels: () => api.get('/published-models'),
+    rotateAPIKey: (modelName) => api.post(`/models/${modelName}/publish/rotate-key`),
+    validateAPIKey: (apiKey) => api.post('/validate-api-key', { apiKey }),
+
     // Admin endpoints
     getSystemInfo: () => api.get('/admin/system'),
     getTenants: () => api.get('/admin/tenants'),

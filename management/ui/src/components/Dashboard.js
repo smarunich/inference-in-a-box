@@ -4,6 +4,7 @@ import ModelList from './ModelList';
 import ModelForm from './ModelForm';
 import InferenceTest from './InferenceTest';
 import AdminDashboard from './AdminDashboard';
+import PublishingDashboard from './PublishingDashboard';
 import { LogOut } from 'lucide-react';
 
 const Dashboard = () => {
@@ -24,6 +25,7 @@ const Dashboard = () => {
     { id: 'models', label: 'Models', component: ModelList },
     { id: 'create', label: 'Create Model', component: ModelForm },
     { id: 'inference', label: 'Test Inference', component: InferenceTest },
+    { id: 'publishing', label: 'Publishing', component: PublishingDashboard },
   ];
 
   const ActiveComponent = tabs.find(tab => tab.id === activeTab)?.component;

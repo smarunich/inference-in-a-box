@@ -97,6 +97,45 @@ code {
   color: #1a202c;
 }
 
+/* Publishing Components */
+.model-type-badge {
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.model-type-badge.openai {
+  background-color: #ede9fe;
+  color: #7c3aed;
+}
+
+.model-type-badge.traditional {
+  background-color: #dbeafe;
+  color: #2563eb;
+}
+
+.form-section {
+  padding: 1.5rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background-color: #fafafa;
+}
+
+.form-section h3 {
+  margin: 0 0 1rem 0;
+  color: #374151;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.form-actions {
+  padding-top: 1rem;
+  border-top: 1px solid #e5e7eb;
+  margin-top: 1rem;
+}
+
 /* Buttons */
 .btn {
   padding: 0.5rem 1rem;
