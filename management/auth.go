@@ -12,12 +12,14 @@ import (
 )
 
 type AuthService struct {
-	config *Config
+	config    *Config
+	k8sClient *K8sClient
 }
 
-func NewAuthService(config *Config) *AuthService {
+func NewAuthService(config *Config, k8sClient *K8sClient) *AuthService {
 	return &AuthService{
-		config: config,
+		config:    config,
+		k8sClient: k8sClient,
 	}
 }
 
@@ -188,6 +190,141 @@ func (s *AuthService) GetTokens(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, tokens)
+}
+
+// EnhancedAuthMiddleware validates both JWT tokens and API keys
+func (s *AuthService) EnhancedAuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authHeader := c.GetHeader("Authorization")
+		
+		if authHeader != "" {
+			if strings.HasPrefix(authHeader, "Bearer ") {
+				token := strings.TrimPrefix(authHeader, "Bearer ")
+				
+				// Try JWT first (for management UI)
+				if user, err := s.ValidateToken(token); err == nil {
+					c.Set("user", user)
+					c.Set("auth_type", "jwt")
+					c.Next()
+					return
+				}
+				
+				// Try API key (for published models)
+				if user, err := s.ValidateAPIKey(token); err == nil {
+					c.Set("user", user)
+					c.Set("auth_type", "apikey")
+					c.Next()
+					return
+				}
+			}
+		}
+		
+		// Check X-API-Key header for API key auth
+		if apiKey := c.GetHeader("X-API-Key"); apiKey != "" {
+			if user, err := s.ValidateAPIKey(apiKey); err == nil {
+				c.Set("user", user)
+				c.Set("auth_type", "apikey")
+				c.Next()
+				return
+			}
+		}
+		
+		c.JSON(http.StatusUnauthorized, ErrorResponse{
+			Error: "Invalid authentication",
+		})
+		c.Abort()
+	}
+}
+
+// ValidateAPIKey validates API key and returns user context
+func (s *AuthService) ValidateAPIKey(apiKey string) (*User, error) {
+	if s.k8sClient == nil {
+		return nil, fmt.Errorf("k8s client not initialized")
+	}
+	
+	// Get all API key secrets across all namespaces
+	metadata, err := s.findAPIKeyMetadata(apiKey)
+	if err != nil {
+		return nil, err
+	}
+	
+	if !metadata.IsActive {
+		return nil, fmt.Errorf("API key is inactive")
+	}
+	
+	// Check if API key is expired
+	if !metadata.ExpiresAt.IsZero() && time.Now().After(metadata.ExpiresAt) {
+		return nil, fmt.Errorf("API key has expired")
+	}
+	
+	// Create user context from API key metadata
+	user := &User{
+		Tenant:    metadata.TenantID,
+		Name:      fmt.Sprintf("API Key User (%s)", metadata.ModelName),
+		Subject:   metadata.KeyID,
+		IsAdmin:   false,
+		ExpiresAt: metadata.ExpiresAt.Unix(),
+	}
+	
+	return user, nil
+}
+
+// findAPIKeyMetadata searches for API key metadata in all namespaces
+func (s *AuthService) findAPIKeyMetadata(apiKey string) (*APIKeyMetadata, error) {
+	// Search for API key across all namespaces
+	namespaces := []string{"tenant-a", "tenant-b", "tenant-c"}
+	
+	for _, namespace := range namespaces {
+		// Get all API key secrets in this namespace
+		secrets, err := s.k8sClient.ListAPIKeySecrets(namespace)
+		if err != nil {
+			continue
+		}
+		
+		for _, secret := range secrets {
+			// Check if this secret contains the API key
+			if storedKey, ok := secret["apiKey"].(string); ok && storedKey == apiKey {
+				// Found matching API key, construct metadata
+				metadata := &APIKeyMetadata{
+					Namespace: namespace,
+					IsActive:  true,
+				}
+				
+				if keyID, ok := secret["keyId"].(string); ok {
+					metadata.KeyID = keyID
+				}
+				if modelName, ok := secret["modelName"].(string); ok {
+					metadata.ModelName = modelName
+				}
+				if tenantID, ok := secret["tenantId"].(string); ok {
+					metadata.TenantID = tenantID
+				}
+				if modelType, ok := secret["modelType"].(string); ok {
+					metadata.ModelType = modelType
+				}
+				if createdAt, ok := secret["createdAt"].(string); ok {
+					if t, err := time.Parse(time.RFC3339, createdAt); err == nil {
+						metadata.CreatedAt = t
+					}
+				}
+				if expiresAt, ok := secret["expiresAt"].(string); ok {
+					if t, err := time.Parse(time.RFC3339, expiresAt); err == nil {
+						metadata.ExpiresAt = t
+					}
+				}
+				if permissions, ok := secret["permissions"].(string); ok {
+					metadata.Permissions = strings.Split(permissions, ",")
+				}
+				if isActive, ok := secret["isActive"].(string); ok {
+					metadata.IsActive = isActive == "true"
+				}
+				
+				return metadata, nil
+			}
+		}
+	}
+	
+	return nil, fmt.Errorf("API key not found")
 }
 
 // GetTenantInfo returns current user's tenant information

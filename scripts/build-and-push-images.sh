@@ -100,17 +100,6 @@ push_images() {
     print_success "Multi-arch images are available in registry"
 }
 
-# Update Kubernetes manifests with new image references
-update_manifests() {
-    print_step "Updating Kubernetes manifests"
-    
-    # Update Management Service deployment
-    sed -i.bak "s|image: us-east1-docker.pkg.dev/dogfood-cx/registryrepository/management-service:latest|image: $REGISTRY/management-service:$TAG|g" \
-        "$PROJECT_ROOT/configs/management/management.yaml"
-    
-    print_success "Kubernetes manifests updated"
-}
-
 # Show image information
 show_image_info() {
     print_step "Image Information"

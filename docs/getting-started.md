@@ -18,7 +18,7 @@ Before you begin, ensure you have the following installed:
 1. **Clone the repository**
 
 ```bash
-git clone https://github.com/your-org/inference-in-a-box.git
+git clone https://github.com/smarunich/inference-in-a-box.git
 cd inference-in-a-box
 ```
 
@@ -29,6 +29,7 @@ cd inference-in-a-box
 ```
 
 This script will:
+
 - Create a new Kind cluster named "inference-in-a-box"
 - Install Istio service mesh (v1.26.2)
 - Install Cert Manager (v1.18.1)

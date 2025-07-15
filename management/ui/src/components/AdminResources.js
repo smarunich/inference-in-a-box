@@ -24,10 +24,25 @@ const AdminResources = () => {
     try {
       setLoading(true);
       const response = await api.getResources();
-      setResources(response.data);
+      setResources(response.data || {
+        pods: [],
+        services: [],
+        gateways: [],
+        httpRoutes: [],
+        virtualServices: [],
+        istioGateways: []
+      });
     } catch (error) {
       toast.error('Failed to fetch resources');
       console.error('Error fetching resources:', error);
+      setResources({
+        pods: [],
+        services: [],
+        gateways: [],
+        httpRoutes: [],
+        virtualServices: [],
+        istioGateways: []
+      });
     } finally {
       setLoading(false);
     }
@@ -44,6 +59,7 @@ const AdminResources = () => {
   };
 
   const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
     return new Date(dateString).toLocaleString();
   };
 
@@ -69,12 +85,12 @@ const AdminResources = () => {
   }
 
   const tabs = [
-    { id: 'pods', label: 'Pods', icon: Box, data: resources.pods || [] },
-    { id: 'services', label: 'Services', icon: Network, data: resources.services || [] },
-    { id: 'gateways', label: 'Gateways', icon: Globe, data: resources.gateways || [] },
-    { id: 'httproutes', label: 'HTTP Routes', icon: ArrowRight, data: resources.httpRoutes || [] },
-    { id: 'virtualservices', label: 'Virtual Services', icon: Zap, data: resources.virtualServices || [] },
-    { id: 'istiogateways', label: 'Istio Gateways', icon: Shield, data: resources.istioGateways || [] },
+    { id: 'pods', label: 'Pods', icon: Box, data: (resources && resources.pods) || [] },
+    { id: 'services', label: 'Services', icon: Network, data: (resources && resources.services) || [] },
+    { id: 'gateways', label: 'Gateways', icon: Globe, data: (resources && resources.gateways) || [] },
+    { id: 'httproutes', label: 'HTTP Routes', icon: ArrowRight, data: (resources && resources.httpRoutes) || [] },
+    { id: 'virtualservices', label: 'Virtual Services', icon: Zap, data: (resources && resources.virtualServices) || [] },
+    { id: 'istiogateways', label: 'Istio Gateways', icon: Shield, data: (resources && resources.istioGateways) || [] },
   ];
 
   return (
@@ -91,28 +107,28 @@ const AdminResources = () => {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
         <div style={{ textAlign: 'center', padding: '1rem', backgroundColor: '#f0f9ff', borderRadius: '6px' }}>
           <div style={{ fontSize: '2rem', fontWeight: '600', color: '#0369a1' }}>
-            {(resources.pods || []).filter(p => p.ready).length}
+            {((resources && resources.pods) || []).filter(p => p && p.ready).length}
           </div>
           <div style={{ fontSize: '0.875rem', color: '#075985' }}>Ready Pods</div>
         </div>
         
         <div style={{ textAlign: 'center', padding: '1rem', backgroundColor: '#f0fdf4', borderRadius: '6px' }}>
           <div style={{ fontSize: '2rem', fontWeight: '600', color: '#15803d' }}>
-            {(resources.services || []).length}
+            {((resources && resources.services) || []).length}
           </div>
           <div style={{ fontSize: '0.875rem', color: '#14532d' }}>Services</div>
         </div>
         
         <div style={{ textAlign: 'center', padding: '1rem', backgroundColor: '#fefce8', borderRadius: '6px' }}>
           <div style={{ fontSize: '2rem', fontWeight: '600', color: '#ca8a04' }}>
-            {(resources.gateways || []).length + (resources.istioGateways || []).length}
+            {((resources && resources.gateways) || []).length + ((resources && resources.istioGateways) || []).length}
           </div>
           <div style={{ fontSize: '0.875rem', color: '#a16207' }}>Gateways</div>
         </div>
         
         <div style={{ textAlign: 'center', padding: '1rem', backgroundColor: '#f0f9ff', borderRadius: '6px' }}>
           <div style={{ fontSize: '2rem', fontWeight: '600', color: '#0369a1' }}>
-            {(resources.httpRoutes || []).length + (resources.virtualServices || []).length}
+            {((resources && resources.httpRoutes) || []).length + ((resources && resources.virtualServices) || []).length}
           </div>
           <div style={{ fontSize: '0.875rem', color: '#075985' }}>Routes</div>
         </div>
@@ -151,7 +167,7 @@ const AdminResources = () => {
               </tr>
             </thead>
             <tbody>
-              {(resources.pods || []).map(pod => (
+              {((resources && resources.pods) || []).map(pod => (
                 <tr key={`${pod.namespace}-${pod.name}`}>
                   <td>
                     <div style={{ fontWeight: '500' }}>{pod.name}</div>
@@ -210,7 +226,7 @@ const AdminResources = () => {
               </tr>
             </thead>
             <tbody>
-              {(resources.services || []).map(service => (
+              {((resources && resources.services) || []).map(service => (
                 <tr key={`${service.namespace}-${service.name}`}>
                   <td>
                     <div style={{ fontWeight: '500' }}>{service.name}</div>
@@ -276,14 +292,14 @@ const AdminResources = () => {
               </tr>
             </thead>
             <tbody>
-              {(resources.gateways || []).length === 0 ? (
+              {((resources && resources.gateways) || []).length === 0 ? (
                 <tr>
                   <td colSpan="6" style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
                     No Gateway API gateways found
                   </td>
                 </tr>
               ) : (
-                (resources.gateways || []).map(gateway => (
+                ((resources && resources.gateways) || []).map(gateway => (
                   <tr key={`${gateway.namespace}-${gateway.name}`}>
                     <td>
                       <div style={{ fontWeight: '500' }}>{gateway.name}</div>
@@ -362,14 +378,14 @@ const AdminResources = () => {
               </tr>
             </thead>
             <tbody>
-              {(resources.httpRoutes || []).length === 0 ? (
+              {((resources && resources.httpRoutes) || []).length === 0 ? (
                 <tr>
                   <td colSpan="5" style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
                     No HTTP routes found
                   </td>
                 </tr>
               ) : (
-                (resources.httpRoutes || []).map(route => (
+                ((resources && resources.httpRoutes) || []).map(route => (
                   <tr key={`${route.namespace}-${route.name}`}>
                     <td>
                       <div style={{ fontWeight: '500' }}>{route.name}</div>
@@ -437,14 +453,14 @@ const AdminResources = () => {
               </tr>
             </thead>
             <tbody>
-              {(resources.virtualServices || []).length === 0 ? (
+              {((resources && resources.virtualServices) || []).length === 0 ? (
                 <tr>
                   <td colSpan="5" style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
                     No Istio virtual services found
                   </td>
                 </tr>
               ) : (
-                (resources.virtualServices || []).map(vs => (
+                ((resources && resources.virtualServices) || []).map(vs => (
                   <tr key={`${vs.namespace}-${vs.name}`}>
                     <td>
                       <div style={{ fontWeight: '500' }}>{vs.name}</div>
@@ -512,14 +528,14 @@ const AdminResources = () => {
               </tr>
             </thead>
             <tbody>
-              {(resources.istioGateways || []).length === 0 ? (
+              {((resources && resources.istioGateways) || []).length === 0 ? (
                 <tr>
                   <td colSpan="5" style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
                     No Istio gateways found
                   </td>
                 </tr>
               ) : (
-                (resources.istioGateways || []).map(gateway => (
+                ((resources && resources.istioGateways) || []).map(gateway => (
                   <tr key={`${gateway.namespace}-${gateway.name}`}>
                     <td>
                       <div style={{ fontWeight: '500' }}>{gateway.name}</div>

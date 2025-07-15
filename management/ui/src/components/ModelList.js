@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useApi } from '../contexts/ApiContext';
 import toast from 'react-hot-toast';
-import { RefreshCw, Edit, Trash2, Play, FileText, Info, ExternalLink, AlertCircle, CheckCircle, Clock } from 'lucide-react';
+import { RefreshCw, Edit, Trash2, Play, FileText, Info, ExternalLink, AlertCircle, CheckCircle, Clock, Globe } from 'lucide-react';
 import ModelForm from './ModelForm';
 import JsonView from '@uiw/react-json-view';
 
@@ -13,6 +13,7 @@ const ModelList = () => {
   const [logs, setLogs] = useState([]);
   const [showStatus, setShowStatus] = useState(null);
   const [statusFilter, setStatusFilter] = useState('all'); // all, ready, not-ready, error
+  const [publishedModels, setPublishedModels] = useState([]);
   const api = useApi();
 
   useEffect(() => {
@@ -22,9 +23,16 @@ const ModelList = () => {
   const fetchModels = async () => {
     try {
       setLoading(true);
-      const response = await api.getModels();
-      const models = response.data.models || [];
+      const [modelsResponse, publishedResponse] = await Promise.all([
+        api.getModels(),
+        api.getPublishedModels().catch(() => ({ data: { publishedModels: [] } }))
+      ]);
+      
+      const models = modelsResponse.data.models || [];
+      const published = publishedResponse.data.publishedModels || [];
+      
       console.log('ModelList - fetched models:', models);
+      console.log('ModelList - fetched published models:', published);
       
       // Debug each model's status
       models.forEach(model => {
@@ -37,6 +45,7 @@ const ModelList = () => {
       });
       
       setModels(models);
+      setPublishedModels(published);
     } catch (error) {
       toast.error('Failed to fetch models');
       console.error('Error fetching models:', error);
@@ -160,6 +169,16 @@ const ModelList = () => {
 
   const handleViewStatus = (model) => {
     setShowStatus(model);
+  };
+
+  const isModelPublished = (modelName) => {
+    return publishedModels.some(pm => pm.modelName === modelName);
+  };
+
+  const handlePublish = (modelName) => {
+    // Navigate to publishing workflow
+    window.location.hash = '#publishing';
+    toast.success(`Opening publishing workflow for "${modelName}"`);
   };
 
   const filteredModels = models.filter(model => {
@@ -553,6 +572,24 @@ const ModelList = () => {
                         >
                           <FileText size={14} />
                         </button>
+                        {model.ready && !isModelPublished(model.name) && (
+                          <button
+                            className="btn btn-primary btn-sm"
+                            onClick={() => handlePublish(model.name)}
+                            title="Publish for External Access"
+                          >
+                            <Globe size={14} />
+                          </button>
+                        )}
+                        {isModelPublished(model.name) && (
+                          <button
+                            className="btn btn-success btn-sm"
+                            disabled
+                            title="Already Published"
+                          >
+                            <CheckCircle size={14} />
+                          </button>
+                        )}
                         <button
                           className="btn btn-danger btn-sm"
                           onClick={() => handleDelete(model.name)}
