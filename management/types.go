@@ -367,12 +367,6 @@ type ExampleRequest struct {
 	Description string            `json:"description"`
 }
 
-// PublishingError represents publishing-specific errors
-type PublishingError struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
-	Details string `json:"details,omitempty"`
-}
 
 // Publishing request/response types
 type PublishModelRequest struct {

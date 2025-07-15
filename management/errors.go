@@ -187,11 +187,11 @@ func (v *PublishingValidator) ValidatePublishRequest(namespace, modelName string
 	}
 	
 	// Validate authentication configuration
-	if config.Authentication.Type != "apikey" {
+	if !config.Authentication.RequireAPIKey {
 		errors = append(errors, ValidationError{
-			Field:   "authentication.type",
-			Value:   config.Authentication.Type,
-			Message: "Only 'apikey' authentication is currently supported",
+			Field:   "authentication.requireApiKey",
+			Value:   config.Authentication.RequireAPIKey,
+			Message: "API key authentication is required",
 		})
 	}
 	

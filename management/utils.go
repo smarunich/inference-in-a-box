@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v2"
 )
@@ -48,9 +49,7 @@ func ConvertToModelInfo(obj map[string]interface{}) ModelInfo {
 			modelInfo.Namespace = namespace
 		}
 		if creationTimestamp, ok := metadata["creationTimestamp"].(string); ok {
-			if t, err := parseTime(creationTimestamp); err == nil {
-				modelInfo.CreatedAt = t
-			}
+			modelInfo.CreatedAt = parseTime(creationTimestamp)
 		}
 		modelInfo.Metadata = metadata
 	}
@@ -164,7 +163,51 @@ func ConvertToModelInfo(obj map[string]interface{}) ModelInfo {
 	return modelInfo
 }
 
-// parseTime parses RFC3339 time string
-func parseTime(timeStr string) (time.Time, error) {
-	return time.Parse(time.RFC3339, timeStr)
+// GenerateModelYAML generates YAML configuration for a model
+func GenerateModelYAML(modelName, namespace string, config ModelConfig) (string, error) {
+	// Create InferenceService specification
+	inferenceService := map[string]interface{}{
+		"apiVersion": "serving.kserve.io/v1beta1",
+		"kind":       "InferenceService",
+		"metadata": map[string]interface{}{
+			"name":      modelName,
+			"namespace": namespace,
+		},
+		"spec": map[string]interface{}{
+			"predictor": map[string]interface{}{
+				"containers": []map[string]interface{}{
+					{
+						"name":  "kserve-container",
+						"image": config.ImageURI,
+						"resources": map[string]interface{}{
+							"requests": map[string]interface{}{
+								"cpu":    config.CPURequest,
+								"memory": config.MemoryRequest,
+							},
+							"limits": map[string]interface{}{
+								"cpu":    config.CPULimit,
+								"memory": config.MemoryLimit,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Add GPU resources if specified
+	if config.GPUType != "" && config.GPUCount > 0 {
+		containerSpec := inferenceService["spec"].(map[string]interface{})["predictor"].(map[string]interface{})["containers"].([]map[string]interface{})[0]
+		resources := containerSpec["resources"].(map[string]interface{})
+		resources["limits"].(map[string]interface{})[config.GPUType] = config.GPUCount
+	}
+
+	// Convert to YAML
+	yamlBytes, err := yaml.Marshal(inferenceService)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal YAML: %w", err)
+	}
+
+	return string(yamlBytes), nil
 }
+

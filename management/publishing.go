@@ -538,28 +538,104 @@ func (s *PublishingService) detectModelType(namespace, modelName string) (string
 		return "traditional", nil
 	}
 	
-	// Check for OpenAI-compatible annotations or labels
+	// Check for OpenAI-compatible annotations or labels first (explicit configuration)
 	metadata, ok := inferenceService["metadata"].(map[string]interface{})
 	if ok {
 		if annotations, ok := metadata["annotations"].(map[string]interface{}); ok {
+			if modelType, exists := annotations["serving.kserve.io/api-type"]; exists {
+				if strings.ToLower(fmt.Sprintf("%v", modelType)) == "openai" {
+					return "openai", nil
+				}
+			}
 			if modelType, exists := annotations["model.type"]; exists {
-				if modelType == "openai" {
+				if strings.ToLower(fmt.Sprintf("%v", modelType)) == "openai" {
 					return "openai", nil
 				}
 			}
 		}
 	}
 	
-	// Check for specific predictor configurations that indicate OpenAI compatibility
+	// Check predictor configuration for OpenAI compatibility indicators
 	if predictor, ok := spec["predictor"].(map[string]interface{}); ok {
+		// 1. Check for custom containers with OpenAI-compatible images
 		if containers, ok := predictor["containers"].([]interface{}); ok {
 			for _, container := range containers {
 				if c, ok := container.(map[string]interface{}); ok {
 					if image, ok := c["image"].(string); ok {
-						// Check if the image suggests OpenAI compatibility
-						if strings.Contains(image, "openai") || strings.Contains(image, "llama") || strings.Contains(image, "huggingface") {
-							return "openai", nil
+						imageLower := strings.ToLower(image)
+						// Check for common OpenAI-compatible images
+						openaiImages := []string{
+							"vllm/vllm-openai",
+							"ghcr.io/huggingface/text-generation-inference",
+							"openai/triton-inference-server",
+							"nvidia/tritonserver",
+							"text-generation-inference",
+							"vllm",
 						}
+						for _, openaiImage := range openaiImages {
+							if strings.Contains(imageLower, openaiImage) {
+								return "openai", nil
+							}
+						}
+						
+						// Check for LLM model names in image
+						llmIndicators := []string{
+							"llama", "mistral", "falcon", "vicuna", "alpaca",
+							"gpt", "bert", "t5", "bloom", "opt",
+						}
+						for _, indicator := range llmIndicators {
+							if strings.Contains(imageLower, indicator) {
+								return "openai", nil
+							}
+						}
+					}
+				}
+			}
+		}
+		
+		// 2. Check for HuggingFace models with text generation capability
+		if huggingface, ok := predictor["huggingface"].(map[string]interface{}); ok {
+			if task, ok := huggingface["task"].(string); ok {
+				openaiTasks := []string{
+					"text-generation",
+					"text2text-generation", 
+					"conversational",
+					"feature-extraction",
+				}
+				taskLower := strings.ToLower(task)
+				for _, openaiTask := range openaiTasks {
+					if strings.Contains(taskLower, openaiTask) {
+						return "openai", nil
+					}
+				}
+			}
+			
+			// Check model URI for transformer indicators
+			if modelUri, ok := huggingface["modelUri"].(string); ok {
+				modelUriLower := strings.ToLower(modelUri)
+				transformerIndicators := []string{
+					"transformer", "llama", "mistral", "falcon", "vicuna",
+					"gpt", "bert", "t5", "bloom", "opt", "alpaca",
+				}
+				for _, indicator := range transformerIndicators {
+					if strings.Contains(modelUriLower, indicator) {
+						return "openai", nil
+					}
+				}
+			}
+		}
+		
+		// 3. Check for PyTorch models with transformer architecture
+		if pytorch, ok := predictor["pytorch"].(map[string]interface{}); ok {
+			if modelUri, ok := pytorch["modelUri"].(string); ok {
+				modelUriLower := strings.ToLower(modelUri)
+				transformerIndicators := []string{
+					"transformer", "llama", "mistral", "falcon", "vicuna",
+					"gpt", "bert", "t5", "bloom", "opt", "alpaca",
+				}
+				for _, indicator := range transformerIndicators {
+					if strings.Contains(modelUriLower, indicator) {
+						return "openai", nil
 					}
 				}
 			}
@@ -1131,6 +1207,11 @@ func (s *PublishingService) updateAPIKeyLastUsed(namespace, modelName string) {
 		// Log error but don't fail the request
 		log.Printf("Failed to update API key last used timestamp: %v", err)
 	}
+}
+
+// generateKeyID generates a unique key ID
+func generateKeyID() string {
+	return uuid.New().String()
 }
 
 func (s *PublishingService) logPublishingEvent(user *User, modelName, namespace, action string) {

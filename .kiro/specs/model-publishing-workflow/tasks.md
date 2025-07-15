@@ -28,7 +28,7 @@
     - _Requirements: 1.3, 4.3_
 
 - [ ] 3. Implement core publishing service functionality
-  - [-] 3.1 Implement model type detection logic
+  - [ ] 3.1 Implement model type detection logic
     - Add logic to determine if model supports traditional inference or OpenAI schema
     - Create model capability analysis based on InferenceService configuration
     - _Requirements: 1.4, 1.5_
