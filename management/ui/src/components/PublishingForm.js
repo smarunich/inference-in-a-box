@@ -83,7 +83,9 @@ const PublishingForm = ({ modelName, onComplete, onCancel }) => {
 
   const checkIfPublished = async () => {
     try {
-      const response = await api.getPublishedModel(modelName);
+      // Include namespace parameter for all users
+      const namespace = formData.tenantId || user?.tenant;
+      const response = await api.getPublishedModel(modelName, namespace);
       setIsPublished(true);
       // Pre-populate form with existing data
       const publishedModel = response.data;
@@ -158,8 +160,8 @@ const PublishingForm = ({ modelName, onComplete, onCancel }) => {
     try {
       setLoading(true);
       
-      // Include namespace parameter for admin users
-      const namespace = user?.isAdmin ? formData.tenantId : null;
+      // Include namespace parameter for all users
+      const namespace = formData.tenantId || user?.tenant;
       await api.unpublishModel(modelName, namespace);
       
       toast.success('Model unpublished successfully!');

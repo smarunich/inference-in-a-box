@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApi } from '../contexts/ApiContext';
+import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
 import { 
   RefreshCw, 
@@ -25,6 +26,7 @@ const PublishingList = () => {
   const [showDetails, setShowDetails] = useState(false);
   const [rotatingKey, setRotatingKey] = useState(null);
   const api = useApi();
+  const { user } = useAuth();
 
   useEffect(() => {
     fetchPublishedModels();
@@ -50,14 +52,16 @@ const PublishingList = () => {
     setShowDetails(true);
   };
 
-  const handleRotateKey = async (modelName) => {
+  const handleRotateKey = async (modelName, modelTenant) => {
     if (!window.confirm(`Are you sure you want to rotate the API key for model "${modelName}"? This will invalidate the current key.`)) {
       return;
     }
 
     try {
       setRotatingKey(modelName);
-      const response = await api.rotateAPIKey(modelName);
+      // Use the model's tenant or the user's tenant as namespace
+      const namespace = modelTenant || user?.tenant;
+      const response = await api.rotateAPIKey(modelName, namespace);
       toast.success('API key rotated successfully');
       
       // Update the model in the list with the new key
@@ -76,13 +80,15 @@ const PublishingList = () => {
     }
   };
 
-  const handleUnpublish = async (modelName) => {
+  const handleUnpublish = async (modelName, modelTenant) => {
     if (!window.confirm(`Are you sure you want to unpublish model "${modelName}"? This will remove external access.`)) {
       return;
     }
 
     try {
-      await api.unpublishModel(modelName);
+      // Use the model's tenant or the user's tenant as namespace
+      const namespace = modelTenant || user?.tenant;
+      await api.unpublishModel(modelName, namespace);
       toast.success(`Model "${modelName}" unpublished successfully`);
       fetchPublishedModels();
     } catch (error) {
@@ -423,7 +429,7 @@ const PublishingList = () => {
                       </button>
                       <button
                         className="btn btn-secondary btn-sm"
-                        onClick={() => handleRotateKey(model.modelName)}
+                        onClick={() => handleRotateKey(model.modelName, model.tenantID)}
                         disabled={rotatingKey === model.modelName}
                         title="Rotate API Key"
                       >
@@ -431,7 +437,7 @@ const PublishingList = () => {
                       </button>
                       <button
                         className="btn btn-danger btn-sm"
-                        onClick={() => handleUnpublish(model.modelName)}
+                        onClick={() => handleUnpublish(model.modelName, model.tenantID)}
                         title="Unpublish"
                       >
                         <Trash2 size={14} />

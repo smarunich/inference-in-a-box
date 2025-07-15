@@ -13,10 +13,10 @@ rules:
   resources: ["inferenceservices"]
   verbs: ["get", "list", "create", "update", "patch", "delete"]
 - apiGroups: [""]
-  resources: ["pods", "pods/log", "nodes", "namespaces", "services", "configmaps"]
+  resources: ["pods", "pods/log", "nodes", "namespaces", "services"]
   verbs:  ["get", "list", "watch"]
 - apiGroups: [""]
-  resources: ["secrets"]
+  resources: ["secrets","configmaps"]
   verbs: ["get", "list", "create", "update", "patch", "delete"]
 - apiGroups: ["apps"]
   resources: ["deployments"]
@@ -26,6 +26,9 @@ rules:
   verbs: ["get", "list", "create", "update", "patch", "delete"]
 - apiGroups: ["networking.istio.io"]
   resources: ["virtualservices", "gateways"]
+  verbs: ["get", "list", "create", "update", "patch", "delete"]
+- apiGroups: ["gateway.envoyproxy.io"] 
+  resources: ["backendtrafficpolicies"]
   verbs: ["get", "list", "create", "update", "patch", "delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
