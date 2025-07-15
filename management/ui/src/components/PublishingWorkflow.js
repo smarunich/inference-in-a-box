@@ -159,7 +159,7 @@ const PublishingWorkflow = ({ modelName, onComplete, onCancel }) => {
       
       // If admin is publishing to a specific tenant, include tenant in request
       if (user?.isAdmin && publishConfig.tenantId) {
-        requestBody.config.tenantID = publishConfig.tenantId;
+        requestBody.config.tenantId = publishConfig.tenantId;
       }
       
       const response = await api.publishModel(modelName, requestBody);

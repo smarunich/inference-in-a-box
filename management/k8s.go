@@ -1167,3 +1167,39 @@ func (k *K8sClient) CreateReferenceGrant(namespace string, referenceGrant map[st
 	
 	return nil
 }
+
+func (k *K8sClient) GetTenantNamespaces() ([]string, error) {
+	ctx := context.Background()
+	
+	// List all namespaces with tenant label selector
+	namespaces, err := k.clientset.CoreV1().Namespaces().List(ctx, metav1.ListOptions{
+		LabelSelector: "app.kubernetes.io/component=tenant",
+	})
+	if err != nil {
+		k.logError("GetTenantNamespaces", err)
+		return nil, fmt.Errorf("failed to list tenant namespaces: %w", err)
+	}
+	
+	var tenantNamespaces []string
+	for _, ns := range namespaces.Items {
+		// Include namespaces that start with "tenant-" as fallback
+		if ns.Labels["app.kubernetes.io/component"] == "tenant" || 
+		   (len(ns.Name) > 7 && ns.Name[:7] == "tenant-") {
+			tenantNamespaces = append(tenantNamespaces, ns.Name)
+		}
+	}
+	
+	// If no labeled namespaces found, fallback to prefix-based discovery
+	if len(tenantNamespaces) == 0 {
+		allNamespaces, err := k.clientset.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
+		if err == nil {
+			for _, ns := range allNamespaces.Items {
+				if len(ns.Name) > 7 && ns.Name[:7] == "tenant-" {
+					tenantNamespaces = append(tenantNamespaces, ns.Name)
+				}
+			}
+		}
+	}
+	
+	return tenantNamespaces, nil
+}

@@ -732,17 +732,7 @@ code {
     grid-template-columns: repeat(2, 1fr);
   }
 }
-/* Enhanc
-ed Publishing Components */
-.model-type-badge.openai {
-  background-color: #dbeafe;
-  color: #1e40af;
-}
-
-.model-type-badge.traditional {
-  background-color: #f3e8ff;
-  color: #7c3aed;
-}
+/* Enhanced Publishing Components */
 
 /* Publishing Workflow Styles */
 .publishing-step-indicator {

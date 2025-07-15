@@ -780,13 +780,8 @@ func (s *PublishingService) createAIGatewayRoute(namespace, modelName, routeName
 		externalPath = fmt.Sprintf("/v1/models/%s", modelName)
 	}
 
-	// Create Backend resource first
+	// Create AIServiceBackend resource (directly referencing KServe service)
 	backendName := fmt.Sprintf("%s-backend", modelName)
-	if err := s.createBackend(namespace, modelName, backendName); err != nil {
-		return "", fmt.Errorf("failed to create Backend: %w", err)
-	}
-
-	// Create AIServiceBackend resource
 	if err := s.createAIServiceBackend(namespace, modelName, backendName); err != nil {
 		return "", fmt.Errorf("failed to create AIServiceBackend: %w", err)
 	}
@@ -802,7 +797,7 @@ func (s *PublishingService) createAIGatewayRoute(namespace, modelName, routeName
 		"kind":       "AIGatewayRoute",
 		"metadata": map[string]interface{}{
 			"name":      routeName,
-			"namespace": "default",
+			"namespace": "envoy-gateway-system",
 			"labels": map[string]interface{}{
 				"app":        "published-model",
 				"model-name": modelName,
@@ -860,7 +855,7 @@ func (s *PublishingService) createAIGatewayRoute(namespace, modelName, routeName
 	}
 	
 	// Create the AIGatewayRoute
-	if err := s.k8sClient.CreateAIGatewayRoute("default", aiGatewayRoute); err != nil {
+	if err := s.k8sClient.CreateAIGatewayRoute("envoy-gateway-system", aiGatewayRoute); err != nil {
 		return "", fmt.Errorf("failed to create AIGatewayRoute: %w", err)
 	}
 	
@@ -1145,8 +1140,13 @@ func (s *PublishingService) storeAPIKey(namespace, modelName, apiKey string, met
 }
 
 func (s *PublishingService) validateAPIKey(apiKey string) (*APIKeyMetadata, error) {
-	// Search for API key across all namespaces
-	namespaces := []string{"tenant-a", "tenant-b", "tenant-c"}
+	// Dynamically discover tenant namespaces
+	namespaces, err := s.k8sClient.GetTenantNamespaces()
+	if err != nil {
+		log.Printf("Failed to get tenant namespaces, falling back to hardcoded list: %v", err)
+		// Fallback to hardcoded list if discovery fails
+		namespaces = []string{"tenant-a", "tenant-b", "tenant-c"}
+	}
 	
 	for _, namespace := range namespaces {
 		// Get all API key secrets in this namespace
@@ -1289,37 +1289,9 @@ func (s *PublishingService) cleanupPublishedModelMetadata(namespace, modelName s
 	}
 }
 
-func (s *PublishingService) createBackend(namespace, modelName, backendName string) error {
-	// Create Backend resource pointing to KServe predictor service
-	backend := map[string]interface{}{
-		"apiVersion": "gateway.envoyproxy.io/v1alpha1",
-		"kind":       "Backend",
-		"metadata": map[string]interface{}{
-			"name":      backendName,
-			"namespace": "envoy-gateway-system",
-			"labels": map[string]interface{}{
-				"app":        "published-model",
-				"model-name": modelName,
-				"tenant":     namespace,
-			},
-		},
-		"spec": map[string]interface{}{
-			"endpoints": []interface{}{
-				map[string]interface{}{
-					"fqdn": map[string]interface{}{
-						"hostname": fmt.Sprintf("%s-predictor.%s.svc.cluster.local", modelName, namespace),
-						"port":     80,
-					},
-				},
-			},
-		},
-	}
-
-	return s.k8sClient.CreateBackend("envoy-gateway-system", backend)
-}
 
 func (s *PublishingService) createAIServiceBackend(namespace, modelName, backendName string) error {
-	// Create AIServiceBackend resource
+	// Create AIServiceBackend resource referencing istio-ingressgateway (same as HTTPRoute)
 	aiServiceBackend := map[string]interface{}{
 		"apiVersion": "aigateway.envoyproxy.io/v1alpha1",
 		"kind":       "AIServiceBackend",
@@ -1333,13 +1305,18 @@ func (s *PublishingService) createAIServiceBackend(namespace, modelName, backend
 			},
 		},
 		"spec": map[string]interface{}{
-			"backendRef": map[string]interface{}{
-				"group": "gateway.envoyproxy.io",
-				"kind":  "Backend",
-				"name":  backendName,
-			},
 			"schema": map[string]interface{}{
 				"name": "OpenAI",
+			},
+			"backendRef": map[string]interface{}{
+				"name":      "istio-ingressgateway",
+				"namespace": "istio-system",
+				"kind":      "Service",
+				"group":     "",
+				"port":      80,
+			},
+			"timeouts": map[string]interface{}{
+				"request": "60s",
 			},
 		},
 	}
