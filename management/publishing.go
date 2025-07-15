@@ -235,6 +235,12 @@ func (s *PublishingService) UnpublishModel(c *gin.Context) {
 		// Admin can unpublish from any namespace
 		if ns := c.Query("namespace"); ns != "" {
 			namespace = ns
+		} else {
+			// If no namespace specified, find where the model is published
+			foundNamespace := s.findModelPublishedNamespace(modelName)
+			if foundNamespace != "" {
+				namespace = foundNamespace
+			}
 		}
 	}
 
@@ -523,6 +529,24 @@ func (s *PublishingService) isModelPublished(namespace, modelName string) bool {
 	// Check if published model metadata exists
 	_, err := s.k8sClient.GetPublishedModelMetadata(namespace, modelName)
 	return err == nil
+}
+
+func (s *PublishingService) findModelPublishedNamespace(modelName string) string {
+	// Search across all tenant namespaces to find where the model is published
+	namespaces, err := s.k8sClient.GetTenantNamespaces()
+	if err != nil {
+		log.Printf("Failed to get tenant namespaces: %v", err)
+		// Fallback to hardcoded list
+		namespaces = []string{"tenant-a", "tenant-b", "tenant-c"}
+	}
+	
+	for _, namespace := range namespaces {
+		if s.isModelPublished(namespace, modelName) {
+			return namespace
+		}
+	}
+	
+	return ""
 }
 
 func (s *PublishingService) detectModelType(namespace, modelName string) (string, error) {
@@ -1263,6 +1287,8 @@ func (s *PublishingService) cleanupAPIKey(namespace, modelName string) {
 
 func (s *PublishingService) cleanupGatewayConfiguration(namespace, modelName string) {
 	routeName := fmt.Sprintf("published-model-%s-%s", namespace, modelName)
+	backendName := fmt.Sprintf("%s-backend", modelName)
+	grantName := fmt.Sprintf("published-model-grant-%s-%s", namespace, modelName)
 	
 	// Delete HTTPRoute
 	if err := s.k8sClient.DeleteHTTPRoute("envoy-gateway-system", routeName); err != nil {
@@ -1272,6 +1298,16 @@ func (s *PublishingService) cleanupGatewayConfiguration(namespace, modelName str
 	// Delete AIGatewayRoute
 	if err := s.k8sClient.DeleteAIGatewayRoute("envoy-gateway-system", routeName); err != nil {
 		log.Printf("Failed to cleanup AIGatewayRoute %s: %v", routeName, err)
+	}
+	
+	// Delete AIServiceBackend
+	if err := s.k8sClient.DeleteAIServiceBackend("envoy-gateway-system", backendName); err != nil {
+		log.Printf("Failed to cleanup AIServiceBackend %s: %v", backendName, err)
+	}
+	
+	// Delete ReferenceGrant
+	if err := s.k8sClient.DeleteReferenceGrant(namespace, grantName); err != nil {
+		log.Printf("Failed to cleanup ReferenceGrant %s/%s: %v", namespace, grantName, err)
 	}
 }
 

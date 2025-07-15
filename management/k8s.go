@@ -1203,3 +1203,27 @@ func (k *K8sClient) GetTenantNamespaces() ([]string, error) {
 	
 	return tenantNamespaces, nil
 }
+
+func (k *K8sClient) DeleteAIServiceBackend(namespace, backendName string) error {
+	ctx := context.Background()
+	
+	err := k.dynamicClient.Resource(AIServiceBackendGVR).Namespace(namespace).Delete(ctx, backendName, metav1.DeleteOptions{})
+	if err != nil {
+		k.logError("DeleteAIServiceBackend", err)
+		return fmt.Errorf("failed to delete AIServiceBackend: %w", err)
+	}
+	
+	return nil
+}
+
+func (k *K8sClient) DeleteReferenceGrant(namespace, grantName string) error {
+	ctx := context.Background()
+	
+	err := k.dynamicClient.Resource(ReferenceGrantGVR).Namespace(namespace).Delete(ctx, grantName, metav1.DeleteOptions{})
+	if err != nil {
+		k.logError("DeleteReferenceGrant", err)
+		return fmt.Errorf("failed to delete ReferenceGrant: %w", err)
+	}
+	
+	return nil
+}
