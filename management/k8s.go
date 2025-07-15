@@ -43,7 +43,7 @@ var HTTPRouteGVR = schema.GroupVersionResource{
 }
 
 var AIGatewayRouteGVR = schema.GroupVersionResource{
-	Group:    "gateway.ai",
+	Group:    "aigateway.envoyproxy.io",
 	Version:  "v1alpha1",
 	Resource: "aigatewayroutes",
 }
