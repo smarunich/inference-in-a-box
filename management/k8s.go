@@ -1091,51 +1091,6 @@ func (k *K8sClient) UpdateConfigMap(namespace, configMapName string, data map[st
 }
 // Missing Gateway API operations
 
-// DeleteHTTPRoute deletes an HTTPRoute
-func (k *K8sClient) DeleteHTTPRoute(namespace, routeName string) error {
-	ctx := context.Background()
-	
-	err := k.dynamicClient.Resource(HTTPRouteGVR).Namespace(namespace).Delete(ctx, routeName, metav1.DeleteOptions{})
-	if err != nil {
-		k.logError("DeleteHTTPRoute", err)
-		return fmt.Errorf("failed to delete HTTPRoute: %w", err)
-	}
-	
-	return nil
-}
-
-// DeleteAIGatewayRoute deletes an AIGatewayRoute
-func (k *K8sClient) DeleteAIGatewayRoute(namespace, routeName string) error {
-	ctx := context.Background()
-	
-	err := k.dynamicClient.Resource(AIGatewayRouteGVR).Namespace(namespace).Delete(ctx, routeName, metav1.DeleteOptions{})
-	if err != nil {
-		k.logError("DeleteAIGatewayRoute", err)
-		return fmt.Errorf("failed to delete AIGatewayRoute: %w", err)
-	}
-	
-	return nil
-}
-
-// DeletePublishedModelMetadata deletes published model metadata
-func (k *K8sClient) DeletePublishedModelMetadata(namespace, modelName string) error {
-	ctx := context.Background()
-	
-	configMapName := fmt.Sprintf("published-model-metadata-%s", modelName)
-	
-	err := k.clientset.CoreV1().ConfigMaps(namespace).Delete(ctx, configMapName, metav1.DeleteOptions{})
-	if err != nil {
-		k.logError("DeletePublishedModelMetadata", err)
-		return fmt.Errorf("failed to delete published model metadata: %w", err)
-	}
-	
-	return nil
-}
-
-// Helper function to generate unique key IDs
-func generateKeyID() string {
-	return uuid.New().String()
-}
 
 // Helper function to check if error is resource not found
 func IsResourceNotFoundError(err error) bool {
