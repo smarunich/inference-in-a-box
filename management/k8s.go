@@ -54,6 +54,24 @@ var BackendTrafficPolicyGVR = schema.GroupVersionResource{
 	Resource: "backendtrafficpolicies",
 }
 
+var BackendGVR = schema.GroupVersionResource{
+	Group:    "gateway.envoyproxy.io",
+	Version:  "v1alpha1",
+	Resource: "backends",
+}
+
+var AIServiceBackendGVR = schema.GroupVersionResource{
+	Group:    "aigateway.envoyproxy.io",
+	Version:  "v1alpha1",
+	Resource: "aiservicebackends",
+}
+
+var ReferenceGrantGVR = schema.GroupVersionResource{
+	Group:    "gateway.networking.k8s.io",
+	Version:  "v1beta1",
+	Resource: "referencegrants",
+}
+
 func NewK8sClient() (*K8sClient, error) {
 	config, err := getK8sConfig()
 	if err != nil {
@@ -1097,4 +1115,55 @@ func IsResourceNotFoundError(err error) bool {
 		return false
 	}
 	return strings.Contains(err.Error(), "not found")
+}
+
+func (k *K8sClient) CreateBackend(namespace string, backend map[string]interface{}) error {
+	ctx := context.Background()
+	
+	// Convert to unstructured for dynamic client
+	unstructuredBackend := &unstructured.Unstructured{
+		Object: backend,
+	}
+	
+	_, err := k.dynamicClient.Resource(BackendGVR).Namespace(namespace).Create(ctx, unstructuredBackend, metav1.CreateOptions{})
+	if err != nil {
+		k.logError("CreateBackend", err)
+		return fmt.Errorf("failed to create Backend: %w", err)
+	}
+	
+	return nil
+}
+
+func (k *K8sClient) CreateAIServiceBackend(namespace string, aiServiceBackend map[string]interface{}) error {
+	ctx := context.Background()
+	
+	// Convert to unstructured for dynamic client
+	unstructuredBackend := &unstructured.Unstructured{
+		Object: aiServiceBackend,
+	}
+	
+	_, err := k.dynamicClient.Resource(AIServiceBackendGVR).Namespace(namespace).Create(ctx, unstructuredBackend, metav1.CreateOptions{})
+	if err != nil {
+		k.logError("CreateAIServiceBackend", err)
+		return fmt.Errorf("failed to create AIServiceBackend: %w", err)
+	}
+	
+	return nil
+}
+
+func (k *K8sClient) CreateReferenceGrant(namespace string, referenceGrant map[string]interface{}) error {
+	ctx := context.Background()
+	
+	// Convert to unstructured for dynamic client
+	unstructuredGrant := &unstructured.Unstructured{
+		Object: referenceGrant,
+	}
+	
+	_, err := k.dynamicClient.Resource(ReferenceGrantGVR).Namespace(namespace).Create(ctx, unstructuredGrant, metav1.CreateOptions{})
+	if err != nil {
+		k.logError("CreateReferenceGrant", err)
+		return fmt.Errorf("failed to create ReferenceGrant: %w", err)
+	}
+	
+	return nil
 }

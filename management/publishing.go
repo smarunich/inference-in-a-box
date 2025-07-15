@@ -779,6 +779,22 @@ func (s *PublishingService) createAIGatewayRoute(namespace, modelName, routeName
 	if externalPath == "" {
 		externalPath = fmt.Sprintf("/v1/models/%s", modelName)
 	}
+
+	// Create Backend resource first
+	backendName := fmt.Sprintf("%s-backend", modelName)
+	if err := s.createBackend(namespace, modelName, backendName); err != nil {
+		return "", fmt.Errorf("failed to create Backend: %w", err)
+	}
+
+	// Create AIServiceBackend resource
+	if err := s.createAIServiceBackend(namespace, modelName, backendName); err != nil {
+		return "", fmt.Errorf("failed to create AIServiceBackend: %w", err)
+	}
+
+	// Create ReferenceGrant for cross-namespace access
+	if err := s.createReferenceGrant(namespace, modelName); err != nil {
+		return "", fmt.Errorf("failed to create ReferenceGrant: %w", err)
+	}
 	
 	// Create AIGatewayRoute configuration
 	aiGatewayRoute := map[string]interface{}{
@@ -786,7 +802,7 @@ func (s *PublishingService) createAIGatewayRoute(namespace, modelName, routeName
 		"kind":       "AIGatewayRoute",
 		"metadata": map[string]interface{}{
 			"name":      routeName,
-			"namespace": "envoy-gateway-system",
+			"namespace": "default",
 			"labels": map[string]interface{}{
 				"app":        "published-model",
 				"model-name": modelName,
@@ -795,70 +811,56 @@ func (s *PublishingService) createAIGatewayRoute(namespace, modelName, routeName
 			},
 		},
 		"spec": map[string]interface{}{
-			"parentRefs": []interface{}{
+			"schema": map[string]interface{}{
+				"name": "OpenAI",
+			},
+			"targetRefs": []interface{}{
 				map[string]interface{}{
-					"name":      "ai-inference-gateway",
-					"namespace": "envoy-gateway-system",
+					"name":  "envoy-ai-gateway-basic",
+					"kind":  "Gateway",
+					"group": "gateway.networking.k8s.io",
 				},
 			},
 			"rules": []interface{}{
 				map[string]interface{}{
 					"matches": []interface{}{
 						map[string]interface{}{
-							"path": map[string]interface{}{
-								"type":  "PathPrefix",
-								"value": externalPath,
-							},
 							"headers": []interface{}{
 								map[string]interface{}{
-									"name": "x-api-key",
-									"type":  "RegularExpression",
-									"value": ".*",
-								},
-							},
-						},
-					},
-					"filters": []interface{}{
-						map[string]interface{}{
-							"type": "RequestHeaderModifier",
-							"requestHeaderModifier": map[string]interface{}{
-								"set": []interface{}{
-									map[string]interface{}{
-										"name":  "x-tenant",
-										"value": namespace,
-									},
-									map[string]interface{}{
-										"name":  "x-model-name",
-										"value": modelName,
-									},
-									map[string]interface{}{
-										"name":  "x-model-type",
-										"value": "openai",
-									},
+									"type":  "Exact",
+									"name":  "x-ai-eg-model",
+									"value": modelName,
 								},
 							},
 						},
 					},
 					"backendRefs": []interface{}{
 						map[string]interface{}{
-							"name":      "istio-ingressgateway",
-							"namespace": "istio-system",
-							"port":      80,
+							"name":   backendName,
+							"weight": 100,
 						},
 					},
 				},
 			},
-			"openai": map[string]interface{}{
-				"enabled":    true,
-				"modelName":  modelName,
-				"namespace":  namespace,
-				"tokenLimit": config.RateLimiting.TokensPerHour,
+			"llmRequestCosts": []interface{}{
+				map[string]interface{}{
+					"metadataKey": "llm_input_token",
+					"type":        "InputToken",
+				},
+				map[string]interface{}{
+					"metadataKey": "llm_output_token",
+					"type":        "OutputToken",
+				},
+				map[string]interface{}{
+					"metadataKey": "llm_total_token",
+					"type":        "TotalToken",
+				},
 			},
 		},
 	}
 	
 	// Create the AIGatewayRoute
-	if err := s.k8sClient.CreateAIGatewayRoute("envoy-gateway-system", aiGatewayRoute); err != nil {
+	if err := s.k8sClient.CreateAIGatewayRoute("default", aiGatewayRoute); err != nil {
 		return "", fmt.Errorf("failed to create AIGatewayRoute: %w", err)
 	}
 	
@@ -1285,5 +1287,99 @@ func (s *PublishingService) cleanupPublishedModelMetadata(namespace, modelName s
 	if err := s.k8sClient.DeletePublishedModelMetadata(namespace, modelName); err != nil {
 		log.Printf("Failed to cleanup published model metadata %s/%s: %v", namespace, modelName, err)
 	}
+}
+
+func (s *PublishingService) createBackend(namespace, modelName, backendName string) error {
+	// Create Backend resource pointing to KServe predictor service
+	backend := map[string]interface{}{
+		"apiVersion": "gateway.envoyproxy.io/v1alpha1",
+		"kind":       "Backend",
+		"metadata": map[string]interface{}{
+			"name":      backendName,
+			"namespace": "envoy-gateway-system",
+			"labels": map[string]interface{}{
+				"app":        "published-model",
+				"model-name": modelName,
+				"tenant":     namespace,
+			},
+		},
+		"spec": map[string]interface{}{
+			"endpoints": []interface{}{
+				map[string]interface{}{
+					"fqdn": map[string]interface{}{
+						"hostname": fmt.Sprintf("%s-predictor.%s.svc.cluster.local", modelName, namespace),
+						"port":     80,
+					},
+				},
+			},
+		},
+	}
+
+	return s.k8sClient.CreateBackend("envoy-gateway-system", backend)
+}
+
+func (s *PublishingService) createAIServiceBackend(namespace, modelName, backendName string) error {
+	// Create AIServiceBackend resource
+	aiServiceBackend := map[string]interface{}{
+		"apiVersion": "aigateway.envoyproxy.io/v1alpha1",
+		"kind":       "AIServiceBackend",
+		"metadata": map[string]interface{}{
+			"name":      backendName,
+			"namespace": "envoy-gateway-system",
+			"labels": map[string]interface{}{
+				"app":        "published-model",
+				"model-name": modelName,
+				"tenant":     namespace,
+			},
+		},
+		"spec": map[string]interface{}{
+			"backendRef": map[string]interface{}{
+				"group": "gateway.envoyproxy.io",
+				"kind":  "Backend",
+				"name":  backendName,
+			},
+			"schema": map[string]interface{}{
+				"name": "OpenAI",
+			},
+		},
+	}
+
+	return s.k8sClient.CreateAIServiceBackend("envoy-gateway-system", aiServiceBackend)
+}
+
+func (s *PublishingService) createReferenceGrant(namespace, modelName string) error {
+	// Create ReferenceGrant for cross-namespace access
+	grantName := fmt.Sprintf("published-model-grant-%s-%s", namespace, modelName)
+	referenceGrant := map[string]interface{}{
+		"apiVersion": "gateway.networking.k8s.io/v1beta1",
+		"kind":       "ReferenceGrant",
+		"metadata": map[string]interface{}{
+			"name":      grantName,
+			"namespace": namespace,
+			"labels": map[string]interface{}{
+				"app":        "published-model",
+				"model-name": modelName,
+				"tenant":     namespace,
+			},
+		},
+		"spec": map[string]interface{}{
+			"from": []interface{}{
+				map[string]interface{}{
+					"group":     "aigateway.envoyproxy.io",
+					"kind":      "AIServiceBackend",
+					"namespace": "envoy-gateway-system",
+				},
+			},
+			"to": []interface{}{
+				map[string]interface{}{
+					"group": "",
+					"kind":  "Service",
+					"name":  fmt.Sprintf("%s-predictor", modelName),
+				},
+			},
+		},
+	}
+
+	return s.k8sClient.CreateReferenceGrant(namespace, referenceGrant)
 }
 
