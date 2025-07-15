@@ -14,19 +14,29 @@ const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState('models');
   const { logout } = useAuth();
 
-  const tabs = [
-    { id: 'models', label: 'Models', icon: Database, component: ModelList, description: 'Manage AI/ML models across all tenants' },
-    { id: 'create', label: 'Create Model', icon: Settings, component: ModelForm, description: 'Deploy new models to any tenant' },
-    { id: 'publishing', label: 'Publishing', icon: Globe, component: PublishingDashboard, description: 'Publish models to external API endpoints' },
-    { id: 'inference', label: 'Test Inference', icon: Activity, component: InferenceTest, description: 'Test model predictions' },
-    { id: 'system', label: 'System Overview', icon: Shield, component: AdminSystem, description: 'Monitor cluster health and status' },
-    { id: 'resources', label: 'Resources', icon: Users, component: AdminResources, description: 'View pods, services, and deployments' },
-    { id: 'logs', label: 'Logs', icon: FileText, component: AdminLogs, description: 'Access system and application logs' },
-    { id: 'kubectl', label: 'kubectl', icon: Terminal, component: AdminKubectl, description: 'Execute kubectl commands' },
+  // MLOps Concerns: Model lifecycle, deployment, testing, and day-2 operations
+  const mlopsTabs = [
+    { id: 'models', label: 'Model Management', icon: Database, component: ModelList, description: 'View, manage, and monitor AI/ML models across all tenants' },
+    { id: 'create', label: 'Deploy Models', icon: Settings, component: ModelForm, description: 'Deploy new models to any tenant namespace' },
+    { id: 'publishing', label: 'Model Publishing', icon: Globe, component: PublishingDashboard, description: 'Publish models to external API endpoints with authentication' },
+    { id: 'inference', label: 'Test Inference', icon: Activity, component: InferenceTest, description: 'Test model predictions and validate deployments' },
   ];
 
-  const ActiveComponent = tabs.find(tab => tab.id === activeTab)?.component;
-  const activeTabInfo = tabs.find(tab => tab.id === activeTab);
+  // Developer Concerns: API access, usage monitoring, and basic debugging
+  const developerTabs = [
+    { id: 'system', label: 'API Keys & Usage', icon: Shield, component: AdminSystem, description: 'Monitor API key usage, rate limits, and access patterns' },
+    { id: 'logs', label: 'Application Logs', icon: FileText, component: AdminLogs, description: 'View application logs and debugging information' },
+  ];
+
+  // Platform Operator Concerns: Infrastructure, resources, and system administration
+  const platformTabs = [
+    { id: 'resources', label: 'Infrastructure', icon: Users, component: AdminResources, description: 'Manage pods, services, deployments, and cluster resources' },
+    { id: 'kubectl', label: 'System Console', icon: Terminal, component: AdminKubectl, description: 'Execute kubectl commands and system operations' },
+  ];
+
+  const allTabs = [...mlopsTabs, ...developerTabs, ...platformTabs];
+  const ActiveComponent = allTabs.find(tab => tab.id === activeTab)?.component;
+  const activeTabInfo = allTabs.find(tab => tab.id === activeTab);
 
   return (
     <>
@@ -63,38 +73,124 @@ const AdminDashboard = () => {
         border: '1px solid #e2e8f0'
       }}>
         <h3 style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '0.5rem' }}>
-          Welcome to AI Model Management Platform
+          AI Model Management Platform
         </h3>
-        <p style={{ color: '#6b7280', marginBottom: '1rem' }}>
-          As a super admin, you have access to all platform features and can manage resources across all tenants.
+        <p style={{ color: '#6b7280', marginBottom: '1.5rem' }}>
+          As a super admin, you have access to all platform features organized by role and concern area.
         </p>
         
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem' }}>
-          {tabs.map(tab => {
-            const Icon = tab.icon;
-            return (
-              <div 
-                key={tab.id}
-                style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '0.5rem',
-                  padding: '0.5rem',
-                  backgroundColor: activeTab === tab.id ? '#dbeafe' : 'transparent',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  border: activeTab === tab.id ? '1px solid #3b82f6' : '1px solid transparent'
-                }}
-                onClick={() => setActiveTab(tab.id)}
-              >
-                <Icon size={16} color={activeTab === tab.id ? '#3b82f6' : '#6b7280'} />
-                <div>
-                  <div style={{ fontWeight: '500', fontSize: '0.875rem' }}>{tab.label}</div>
-                  <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>{tab.description}</div>
+        {/* MLOps Concerns */}
+        <div style={{ marginBottom: '1.5rem' }}>
+          <h4 style={{ fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.5rem', color: '#059669' }}>
+            🤖 MLOps Concerns
+          </h4>
+          <p style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.75rem' }}>
+            Model lifecycle management, deployment, testing, and day-2 operations
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '0.75rem' }}>
+            {mlopsTabs.map(tab => {
+              const Icon = tab.icon;
+              return (
+                <div 
+                  key={tab.id}
+                  style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '0.5rem',
+                    padding: '0.75rem',
+                    backgroundColor: activeTab === tab.id ? '#d1fae5' : '#fff',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    border: activeTab === tab.id ? '1px solid #059669' : '1px solid #e5e7eb',
+                    transition: 'all 0.2s ease'
+                  }}
+                  onClick={() => setActiveTab(tab.id)}
+                >
+                  <Icon size={16} color={activeTab === tab.id ? '#059669' : '#6b7280'} />
+                  <div>
+                    <div style={{ fontWeight: '500', fontSize: '0.875rem' }}>{tab.label}</div>
+                    <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>{tab.description}</div>
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Developer Concerns */}
+        <div style={{ marginBottom: '1.5rem' }}>
+          <h4 style={{ fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.5rem', color: '#7c3aed' }}>
+            💻 Developer Concerns
+          </h4>
+          <p style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.75rem' }}>
+            API access, usage monitoring, logs, and developer debugging tools
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '0.75rem' }}>
+            {developerTabs.map(tab => {
+              const Icon = tab.icon;
+              return (
+                <div 
+                  key={tab.id}
+                  style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '0.5rem',
+                    padding: '0.75rem',
+                    backgroundColor: activeTab === tab.id ? '#ede9fe' : '#fff',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    border: activeTab === tab.id ? '1px solid #7c3aed' : '1px solid #e5e7eb',
+                    transition: 'all 0.2s ease'
+                  }}
+                  onClick={() => setActiveTab(tab.id)}
+                >
+                  <Icon size={16} color={activeTab === tab.id ? '#7c3aed' : '#6b7280'} />
+                  <div>
+                    <div style={{ fontWeight: '500', fontSize: '0.875rem' }}>{tab.label}</div>
+                    <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>{tab.description}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Platform Operator Concerns */}
+        <div>
+          <h4 style={{ fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.5rem', color: '#dc2626' }}>
+            ⚙️ Platform Operator Concerns
+          </h4>
+          <p style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.75rem' }}>
+            Infrastructure management, system administration, and cluster operations
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '0.75rem' }}>
+            {platformTabs.map(tab => {
+              const Icon = tab.icon;
+              return (
+                <div 
+                  key={tab.id}
+                  style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '0.5rem',
+                    padding: '0.75rem',
+                    backgroundColor: activeTab === tab.id ? '#fee2e2' : '#fff',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    border: activeTab === tab.id ? '1px solid #dc2626' : '1px solid #e5e7eb',
+                    transition: 'all 0.2s ease'
+                  }}
+                  onClick={() => setActiveTab(tab.id)}
+                >
+                  <Icon size={16} color={activeTab === tab.id ? '#dc2626' : '#6b7280'} />
+                  <div>
+                    <div style={{ fontWeight: '500', fontSize: '0.875rem' }}>{tab.label}</div>
+                    <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>{tab.description}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
 
