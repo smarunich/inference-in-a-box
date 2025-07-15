@@ -598,59 +598,7 @@ func (k *K8sClient) logError(operation string, err error) {
 
 // Gateway API Operations
 
-// HTTPRoute CRUD operations
-func (k *K8sClient) CreateHTTPRoute(namespace string, route map[string]interface{}) error {
-	ctx := context.Background()
-	
-	// Convert to unstructured
-	obj := &unstructured.Unstructured{
-		Object: route,
-	}
-	obj.SetGroupVersionKind(HTTPRouteGVR.GroupVersion().WithKind("HTTPRoute"))
-	
-	// Create the HTTPRoute
-	_, err := k.dynamicClient.Resource(HTTPRouteGVR).Namespace(namespace).Create(ctx, obj, metav1.CreateOptions{})
-	if err != nil {
-		k.logError("CreateHTTPRoute", err)
-		return fmt.Errorf("failed to create HTTPRoute: %w", err)
-	}
-	
-	return nil
-}
-
-func (k *K8sClient) UpdateHTTPRoute(namespace, name string, route map[string]interface{}) error {
-	ctx := context.Background()
-	
-	// Convert to unstructured
-	obj := &unstructured.Unstructured{
-		Object: route,
-	}
-	obj.SetGroupVersionKind(HTTPRouteGVR.GroupVersion().WithKind("HTTPRoute"))
-	obj.SetName(name)
-	obj.SetNamespace(namespace)
-	
-	// Update the HTTPRoute
-	_, err := k.dynamicClient.Resource(HTTPRouteGVR).Namespace(namespace).Update(ctx, obj, metav1.UpdateOptions{})
-	if err != nil {
-		k.logError("UpdateHTTPRoute", err)
-		return fmt.Errorf("failed to update HTTPRoute: %w", err)
-	}
-	
-	return nil
-}
-
-func (k *K8sClient) DeleteHTTPRoute(namespace, name string) error {
-	ctx := context.Background()
-	
-	// Delete the HTTPRoute
-	err := k.dynamicClient.Resource(HTTPRouteGVR).Namespace(namespace).Delete(ctx, name, metav1.DeleteOptions{})
-	if err != nil {
-		k.logError("DeleteHTTPRoute", err)
-		return fmt.Errorf("failed to delete HTTPRoute: %w", err)
-	}
-	
-	return nil
-}
+// Removed duplicate HTTPRoute CRUD operations - using comprehensive versions later in file
 
 func (k *K8sClient) GetHTTPRoute(namespace, name string) (map[string]interface{}, error) {
 	ctx := context.Background()
@@ -799,93 +747,7 @@ func (k *K8sClient) GetBackendTrafficPolicy(namespace, name string) (map[string]
 	return obj.Object, nil
 }
 
-// API Key Secret Management
-func (k *K8sClient) CreateAPIKeySecret(namespace, modelName, apiKey string) error {
-	ctx := context.Background()
-	
-	secretName := fmt.Sprintf("published-model-api-key-%s", modelName)
-	
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      secretName,
-			Namespace: namespace,
-			Labels: map[string]string{
-				"app":        "published-model",
-				"model-name": modelName,
-				"type":       "api-key",
-			},
-		},
-		Type: corev1.SecretTypeOpaque,
-		Data: map[string][]byte{
-			"api-key": []byte(apiKey),
-		},
-	}
-	
-	_, err := k.clientset.CoreV1().Secrets(namespace).Create(ctx, secret, metav1.CreateOptions{})
-	if err != nil {
-		k.logError("CreateAPIKeySecret", err)
-		return fmt.Errorf("failed to create API key secret: %w", err)
-	}
-	
-	return nil
-}
-
-func (k *K8sClient) UpdateAPIKeySecret(namespace, modelName, apiKey string) error {
-	ctx := context.Background()
-	
-	secretName := fmt.Sprintf("published-model-api-key-%s", modelName)
-	
-	// Get existing secret
-	secret, err := k.clientset.CoreV1().Secrets(namespace).Get(ctx, secretName, metav1.GetOptions{})
-	if err != nil {
-		k.logError("GetAPIKeySecret", err)
-		return fmt.Errorf("failed to get API key secret: %w", err)
-	}
-	
-	// Update the API key
-	secret.Data["api-key"] = []byte(apiKey)
-	
-	_, err = k.clientset.CoreV1().Secrets(namespace).Update(ctx, secret, metav1.UpdateOptions{})
-	if err != nil {
-		k.logError("UpdateAPIKeySecret", err)
-		return fmt.Errorf("failed to update API key secret: %w", err)
-	}
-	
-	return nil
-}
-
-func (k *K8sClient) DeleteAPIKeySecret(namespace, modelName string) error {
-	ctx := context.Background()
-	
-	secretName := fmt.Sprintf("published-model-api-key-%s", modelName)
-	
-	err := k.clientset.CoreV1().Secrets(namespace).Delete(ctx, secretName, metav1.DeleteOptions{})
-	if err != nil {
-		k.logError("DeleteAPIKeySecret", err)
-		return fmt.Errorf("failed to delete API key secret: %w", err)
-	}
-	
-	return nil
-}
-
-func (k *K8sClient) GetAPIKeySecret(namespace, modelName string) (string, error) {
-	ctx := context.Background()
-	
-	secretName := fmt.Sprintf("published-model-api-key-%s", modelName)
-	
-	secret, err := k.clientset.CoreV1().Secrets(namespace).Get(ctx, secretName, metav1.GetOptions{})
-	if err != nil {
-		k.logError("GetAPIKeySecret", err)
-		return "", fmt.Errorf("failed to get API key secret: %w", err)
-	}
-	
-	apiKey, exists := secret.Data["api-key"]
-	if !exists {
-		return "", fmt.Errorf("api-key not found in secret")
-	}
-	
-	return string(apiKey), nil
-}
+// Removed duplicate API Key Secret Management methods - using comprehensive versions later in file
 
 // Published Model Metadata Management
 func (k *K8sClient) CreatePublishedModelMetadata(namespace, modelName string, metadata map[string]interface{}) error {
