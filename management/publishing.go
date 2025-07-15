@@ -725,7 +725,8 @@ func (s *PublishingService) createHTTPRoute(namespace, modelName, routeName stri
 							"headers": []interface{}{
 								map[string]interface{}{
 									"name": "x-api-key",
-									"type": "Present",
+									"type":  "RegularExpression",
+									"value": ".*",
 								},
 							},
 						},
@@ -811,7 +812,8 @@ func (s *PublishingService) createAIGatewayRoute(namespace, modelName, routeName
 							"headers": []interface{}{
 								map[string]interface{}{
 									"name": "x-api-key",
-									"type": "Present",
+									"type":  "RegularExpression",
+									"value": ".*",
 								},
 							},
 						},
@@ -900,7 +902,8 @@ func (s *PublishingService) createRateLimitingPolicy(namespace, modelName string
 									"headers": []interface{}{
 										map[string]interface{}{
 											"name":  "x-api-key",
-											"type":  "Present",
+											"type":  "RegularExpression",
+											"value": ".*",
 										},
 									},
 								},
