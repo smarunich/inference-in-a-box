@@ -23,9 +23,10 @@ const AdminLogs = () => {
   const fetchTenants = async () => {
     try {
       const response = await api.getTenants();
-      setTenants(response.data.tenants);
+      setTenants((response.data && response.data.tenants) || []);
     } catch (error) {
       console.error('Error fetching tenants:', error);
+      setTenants([]);
     }
   };
 
@@ -33,10 +34,11 @@ const AdminLogs = () => {
     try {
       setLoading(true);
       const response = await api.getAdminLogs(filters);
-      setLogs(response.data.logs);
+      setLogs((response.data && response.data.logs) || []);
     } catch (error) {
       toast.error('Failed to fetch logs');
       console.error('Error fetching logs:', error);
+      setLogs([]);
     } finally {
       setLoading(false);
     }
@@ -68,8 +70,8 @@ const AdminLogs = () => {
   };
 
   const downloadLogs = () => {
-    const filteredLogs = logs.filter(log => 
-      log.toLowerCase().includes(searchTerm.toLowerCase())
+    const filteredLogs = (logs || []).filter(log => 
+      log && log.toLowerCase().includes(searchTerm.toLowerCase())
     );
     
     const logsText = filteredLogs.join('\n');
@@ -85,8 +87,8 @@ const AdminLogs = () => {
     toast.success('Logs downloaded');
   };
 
-  const filteredLogs = logs.filter(log => 
-    log.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredLogs = (logs || []).filter(log => 
+    log && log.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const commonComponents = [
@@ -105,7 +107,7 @@ const AdminLogs = () => {
           <button 
             className="btn btn-secondary btn-sm" 
             onClick={downloadLogs}
-            disabled={logs.length === 0}
+            disabled={(logs || []).length === 0}
           >
             <Download size={16} />
             Download
@@ -133,7 +135,7 @@ const AdminLogs = () => {
               onChange={(e) => handleFilterChange('namespace', e.target.value)}
             >
               <option value="">All Namespaces</option>
-              {tenants.map(tenant => (
+              {(tenants || []).map(tenant => (
                 <option key={tenant.name} value={tenant.name}>
                   {tenant.name}
                 </option>
@@ -214,7 +216,7 @@ const AdminLogs = () => {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
           <h3>
             Logs ({filteredLogs.length} 
-            {searchTerm && ` filtered from ${logs.length}`})
+            {searchTerm && ` filtered from ${(logs || []).length}`})
           </h3>
           <button
             className="btn btn-secondary btn-sm"
@@ -264,11 +266,11 @@ const AdminLogs = () => {
                   {String(index + 1).padStart(4, '0')}
                 </span>
                 <span style={{ 
-                  color: log.includes('ERROR') ? '#fca5a5' : 
-                        log.includes('WARN') ? '#fcd34d' : 
-                        log.includes('INFO') ? '#93c5fd' : '#f9fafb'
+                  color: (log && log.includes('ERROR')) ? '#fca5a5' : 
+                        (log && log.includes('WARN')) ? '#fcd34d' : 
+                        (log && log.includes('INFO')) ? '#93c5fd' : '#f9fafb'
                 }}>
-                  {log}
+                  {log || ''}
                 </span>
               </div>
             ))}
@@ -277,34 +279,34 @@ const AdminLogs = () => {
       </div>
 
       {/* Log Statistics */}
-      {logs.length > 0 && (
+      {(logs || []).length > 0 && (
         <div className="card" style={{ marginTop: '1.5rem', padding: '1rem' }}>
           <h3 style={{ marginBottom: '1rem' }}>Log Statistics</h3>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem' }}>
             <div style={{ textAlign: 'center', padding: '1rem', backgroundColor: '#fef2f2', borderRadius: '6px' }}>
               <div style={{ fontSize: '1.5rem', fontWeight: '600', color: '#dc2626' }}>
-                {logs.filter(log => log.includes('ERROR')).length}
+                {(logs || []).filter(log => log && log.includes('ERROR')).length}
               </div>
               <div style={{ fontSize: '0.875rem', color: '#991b1b' }}>Errors</div>
             </div>
             
             <div style={{ textAlign: 'center', padding: '1rem', backgroundColor: '#fefce8', borderRadius: '6px' }}>
               <div style={{ fontSize: '1.5rem', fontWeight: '600', color: '#ca8a04' }}>
-                {logs.filter(log => log.includes('WARN')).length}
+                {(logs || []).filter(log => log && log.includes('WARN')).length}
               </div>
               <div style={{ fontSize: '0.875rem', color: '#a16207' }}>Warnings</div>
             </div>
             
             <div style={{ textAlign: 'center', padding: '1rem', backgroundColor: '#eff6ff', borderRadius: '6px' }}>
               <div style={{ fontSize: '1.5rem', fontWeight: '600', color: '#2563eb' }}>
-                {logs.filter(log => log.includes('INFO')).length}
+                {(logs || []).filter(log => log && log.includes('INFO')).length}
               </div>
               <div style={{ fontSize: '0.875rem', color: '#1d4ed8' }}>Info</div>
             </div>
             
             <div style={{ textAlign: 'center', padding: '1rem', backgroundColor: '#f0fdf4', borderRadius: '6px' }}>
               <div style={{ fontSize: '1.5rem', fontWeight: '600', color: '#16a34a' }}>
-                {logs.length}
+                {(logs || []).length}
               </div>
               <div style={{ fontSize: '0.875rem', color: '#15803d' }}>Total Lines</div>
             </div>
