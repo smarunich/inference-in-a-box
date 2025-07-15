@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"strings"
 )
 
 // DocumentationGenerator handles automatic API documentation generation
