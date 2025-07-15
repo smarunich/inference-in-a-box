@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApi } from '../contexts/ApiContext';
+import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
 import { Globe, Key, Settings, Zap, AlertCircle, CheckCircle, X } from 'lucide-react';
 
@@ -24,15 +25,22 @@ const PublishingForm = ({ modelName, onComplete, onCancel }) => {
   const [isPublished, setIsPublished] = useState(false);
   const [modelDetails, setModelDetails] = useState(null);
   const [tenantInfo, setTenantInfo] = useState(null);
+  const [tenants, setTenants] = useState([]);
   const api = useApi();
+  const { user } = useAuth();
 
   useEffect(() => {
     if (modelName) {
       fetchModelDetails();
       fetchTenantInfo();
       checkIfPublished();
+      
+      // If user is admin, fetch available tenants
+      if (user?.isAdmin) {
+        fetchTenants();
+      }
     }
-  }, [modelName]);
+  }, [modelName, user]);
 
   const fetchModelDetails = async () => {
     try {
@@ -48,9 +56,28 @@ const PublishingForm = ({ modelName, onComplete, onCancel }) => {
     try {
       const response = await api.getTenantInfo();
       setTenantInfo(response.data);
-      setFormData(prev => ({ ...prev, tenantId: response.data.tenant }));
+      // Only set the default tenant if admin hasn't selected one
+      if (!user?.isAdmin) {
+        setFormData(prev => ({ ...prev, tenantId: response.data.tenant }));
+      }
     } catch (error) {
       console.error('Error fetching tenant info:', error);
+    }
+  };
+
+  const fetchTenants = async () => {
+    try {
+      const response = await api.getTenants();
+      setTenants(response.data.tenants || []);
+      
+      // Set default tenant for admin (first tenant or current user tenant)
+      if (response.data.tenants && response.data.tenants.length > 0) {
+        const defaultTenant = tenantInfo?.tenant || response.data.tenants[0].id;
+        setFormData(prev => ({ ...prev, tenantId: defaultTenant }));
+      }
+    } catch (error) {
+      console.error('Error fetching tenants:', error);
+      toast.error('Failed to fetch tenant list');
     }
   };
 
@@ -97,9 +124,17 @@ const PublishingForm = ({ modelName, onComplete, onCancel }) => {
     setLoading(true);
 
     try {
-      const response = await api.publishModel(modelName, {
+      // Add tenant parameter for admin users
+      const requestBody = {
         config: formData
-      });
+      };
+      
+      // If admin is publishing to a different tenant, include tenant in request
+      if (user?.isAdmin && formData.tenantId !== tenantInfo?.tenant) {
+        requestBody.config.tenantID = formData.tenantId;
+      }
+      
+      const response = await api.publishModel(modelName, requestBody);
       
       toast.success('Model published successfully!');
       onComplete(response.data);
@@ -118,7 +153,11 @@ const PublishingForm = ({ modelName, onComplete, onCancel }) => {
 
     try {
       setLoading(true);
-      await api.unpublishModel(modelName);
+      
+      // Include namespace parameter for admin users
+      const namespace = user?.isAdmin ? formData.tenantId : null;
+      await api.unpublishModel(modelName, namespace);
+      
       toast.success('Model unpublished successfully!');
       onComplete(null);
     } catch (error) {
@@ -184,13 +223,35 @@ const PublishingForm = ({ modelName, onComplete, onCancel }) => {
 
             <div className="form-group">
               <label>Tenant</label>
-              <input
-                type="text"
-                value={formData.tenantId}
-                className="form-control"
-                disabled
-                style={{ backgroundColor: '#f8fafc', color: '#6b7280' }}
-              />
+              {user?.isAdmin ? (
+                <select
+                  name="tenantId"
+                  value={formData.tenantId}
+                  onChange={handleInputChange}
+                  className="form-control"
+                  required
+                >
+                  <option value="">Select a tenant</option>
+                  {tenants.map(tenant => (
+                    <option key={tenant.id} value={tenant.id}>
+                      {tenant.name || tenant.id}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={formData.tenantId}
+                  className="form-control"
+                  disabled
+                  style={{ backgroundColor: '#f8fafc', color: '#6b7280' }}
+                />
+              )}
+              {user?.isAdmin && (
+                <div style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '0.25rem' }}>
+                  Select the tenant namespace where the model should be published
+                </div>
+              )}
             </div>
           </div>
 

@@ -60,10 +60,19 @@ export const ApiProvider = ({ children }) => {
     
     // Model Publishing
     publishModel: (modelName, publishConfig) => api.post(`/models/${modelName}/publish`, publishConfig),
-    unpublishModel: (modelName) => api.delete(`/models/${modelName}/publish`),
-    getPublishedModel: (modelName) => api.get(`/models/${modelName}/publish`),
+    unpublishModel: (modelName, namespace = null) => {
+      const params = namespace ? { namespace } : {};
+      return api.delete(`/models/${modelName}/publish`, { params });
+    },
+    getPublishedModel: (modelName, namespace = null) => {
+      const params = namespace ? { namespace } : {};
+      return api.get(`/models/${modelName}/publish`, { params });
+    },
     getPublishedModels: () => api.get('/published-models'),
-    rotateAPIKey: (modelName) => api.post(`/models/${modelName}/publish/rotate-key`),
+    rotateAPIKey: (modelName, namespace = null) => {
+      const params = namespace ? { namespace } : {};
+      return api.post(`/models/${modelName}/publish/rotate-key`, {}, { params });
+    },
     validateAPIKey: (apiKey) => api.post('/validate-api-key', { apiKey }),
 
     // Admin endpoints

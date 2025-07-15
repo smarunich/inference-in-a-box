@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApi } from '../contexts/ApiContext';
+import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
 import { 
   ArrowRight, 
@@ -38,7 +39,9 @@ const PublishingWorkflow = ({ modelName, onComplete, onCancel }) => {
   const [publishedModel, setPublishedModel] = useState(null);
   const [loading, setLoading] = useState(false);
   const [validationErrors, setValidationErrors] = useState([]);
+  const [tenants, setTenants] = useState([]);
   const api = useApi();
+  const { user } = useAuth();
 
   const steps = [
     { id: 1, title: 'Model Validation', icon: CheckCircle },
@@ -51,8 +54,13 @@ const PublishingWorkflow = ({ modelName, onComplete, onCancel }) => {
     if (modelName) {
       fetchModelDetails();
       fetchTenantInfo();
+      
+      // If user is admin, fetch available tenants
+      if (user?.isAdmin) {
+        fetchTenants();
+      }
     }
-  }, [modelName]);
+  }, [modelName, user]);
 
   const fetchModelDetails = async () => {
     try {
@@ -68,9 +76,28 @@ const PublishingWorkflow = ({ modelName, onComplete, onCancel }) => {
   const fetchTenantInfo = async () => {
     try {
       const response = await api.getTenantInfo();
-      setPublishConfig(prev => ({ ...prev, tenantId: response.data.tenant }));
+      // Only set default tenant if admin hasn't selected one
+      if (!user?.isAdmin) {
+        setPublishConfig(prev => ({ ...prev, tenantId: response.data.tenant }));
+      }
     } catch (error) {
       console.error('Error fetching tenant info:', error);
+    }
+  };
+
+  const fetchTenants = async () => {
+    try {
+      const response = await api.getTenants();
+      setTenants(response.data.tenants || []);
+      
+      // Set default tenant for admin
+      if (response.data.tenants && response.data.tenants.length > 0) {
+        const defaultTenant = response.data.tenants[0].id;
+        setPublishConfig(prev => ({ ...prev, tenantId: defaultTenant }));
+      }
+    } catch (error) {
+      console.error('Error fetching tenants:', error);
+      toast.error('Failed to fetch tenant list');
     }
   };
 
@@ -125,9 +152,17 @@ const PublishingWorkflow = ({ modelName, onComplete, onCancel }) => {
   const handlePublish = async () => {
     setLoading(true);
     try {
-      const response = await api.publishModel(modelName, {
+      // Add tenant parameter for admin users
+      const requestBody = {
         config: publishConfig
-      });
+      };
+      
+      // If admin is publishing to a specific tenant, include tenant in request
+      if (user?.isAdmin && publishConfig.tenantId) {
+        requestBody.config.tenantID = publishConfig.tenantId;
+      }
+      
+      const response = await api.publishModel(modelName, requestBody);
       
       setPublishedModel(response.data.publishedModel);
       setCurrentStep(4);
@@ -300,6 +335,34 @@ const PublishingWorkflow = ({ modelName, onComplete, onCancel }) => {
       </h3>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+        
+        {/* Tenant Selection - Only for admins */}
+        {user?.isAdmin && (
+          <div>
+            <h4 style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Settings size={16} />
+              Target Tenant
+            </h4>
+            <div className="form-group">
+              <select
+                value={publishConfig.tenantId}
+                onChange={(e) => handleConfigChange('tenantId', e.target.value)}
+                className="form-control"
+                required
+              >
+                <option value="">Select a tenant</option>
+                {tenants.map(tenant => (
+                  <option key={tenant.id} value={tenant.id}>
+                    {tenant.name || tenant.id}
+                  </option>
+                ))}
+              </select>
+              <div style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '0.5rem' }}>
+                Select the tenant namespace where the model should be published
+              </div>
+            </div>
+          </div>
+        )}
         
         {/* Model Type Detection */}
         <div>
