@@ -209,7 +209,7 @@ const AdminDashboard = () => {
 
       {/* Navigation Tabs */}
       <nav className="nav-tabs" style={{ marginBottom: '2rem' }}>
-        {tabs.map(tab => {
+        {allTabs.map(tab => {
           const Icon = tab.icon;
           return (
             <button
