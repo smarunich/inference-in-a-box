@@ -875,25 +875,8 @@ func (s *PublishingService) createRateLimitingPolicy(namespace, modelName string
 }
 
 func (s *PublishingService) generateAPIDocumentation(namespace, modelName, modelType, externalURL, apiKey string) APIDocumentation {
-	// TODO: Implement API documentation generation
-	return APIDocumentation{
-		EndpointURL: externalURL,
-		AuthHeaders: map[string]string{
-			"X-API-Key": apiKey,
-		},
-		ExampleRequests: []ExampleRequest{
-			{
-				Method:      "POST",
-				URL:         externalURL + "/predict",
-				Headers:     map[string]string{"X-API-Key": apiKey, "Content-Type": "application/json"},
-				Body:        `{"instances": [{"data": "example"}]}`,
-				Description: "Example inference request",
-			},
-		},
-		SDKExamples: map[string]string{
-			"curl": fmt.Sprintf(`curl -X POST "%s/predict" -H "X-API-Key: %s" -H "Content-Type: application/json" -d '{"instances": [{"data": "example"}]}'`, externalURL, apiKey),
-		},
-	}
+	docGenerator := NewDocumentationGenerator(s.config)
+	return docGenerator.GenerateAPIDocumentation(namespace, modelName, modelType, externalURL, apiKey)
 }
 
 func (s *PublishingService) storePublishedModelMetadata(namespace, modelName string, model PublishedModel) error {
@@ -1218,58 +1201,6 @@ func (s *PublishingService) cleanupPublishedModelMetadata(namespace, modelName s
 	if err := s.k8sClient.DeletePublishedModelMetadata(namespace, modelName); err != nil {
 		log.Printf("Failed to cleanup published model metadata %s/%s: %v", namespace, modelName, err)
 	}
-				if tenantID, ok := secret["tenantId"].(string); ok {
-					metadata.TenantID = tenantID
-				}
-				if modelType, ok := secret["modelType"].(string); ok {
-					metadata.ModelType = modelType
-				}
-				if createdAt, ok := secret["createdAt"].(string); ok {
-					if t, err := time.Parse(time.RFC3339, createdAt); err == nil {
-						metadata.CreatedAt = t
-					}
-				}
-				if expiresAt, ok := secret["expiresAt"].(string); ok {
-					if t, err := time.Parse(time.RFC3339, expiresAt); err == nil {
-						metadata.ExpiresAt = t
-					}
-				}
-				if permissions, ok := secret["permissions"].(string); ok {
-					metadata.Permissions = strings.Split(permissions, ",")
-				}
-				if isActive, ok := secret["isActive"].(bool); ok {
-					metadata.IsActive = isActive
-				}
-				
-				return metadata, nil
-			}
-		}
-	}
-	
-	return nil, fmt.Errorf("API key not found")
-}
-
-func (s *PublishingService) updateAPIKeyLastUsed(namespace, modelName string) {
-	// Update the last used timestamp in the API key secret
-	secretName := fmt.Sprintf("published-model-apikey-%s", modelName)
-	
-	// Get current secret
-	secret, err := s.k8sClient.GetAPIKeySecret(namespace, secretName)
-	if err != nil {
-		// Log error but don't fail the request
-		log.Printf("Failed to get API key secret for last used update: %v", err)
-		return
-	}
-	
-	// Update last used timestamp
-	secret["lastUsed"] = time.Now().Format(time.RFC3339)
-	
-	// Update the secret
-	if err := s.k8sClient.UpdateAPIKeySecret(namespace, secretName, secret); err != nil {
-		// Log error but don't fail the request
-		log.Printf("Failed to update API key last used timestamp: %v", err)
-	}
-}
 
 func (s *PublishingService) logPublishingEvent(user *User, modelName, namespace, action string) {
 	// Create audit log entry

@@ -1089,8 +1089,7 @@ func (k *K8sClient) UpdateConfigMap(namespace, configMapName string, data map[st
 	
 	return nil
 }
-// Missi
-ng Gateway API operations
+// Missing Gateway API operations
 
 // DeleteHTTPRoute deletes an HTTPRoute
 func (k *K8sClient) DeleteHTTPRoute(namespace, routeName string) error {
