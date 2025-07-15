@@ -285,3 +285,112 @@ type KubectlResponse struct {
 	Result  string `json:"result"`
 	Command string `json:"command"`
 }
+
+// Publishing-related types
+
+// PublishConfig represents model publishing configuration
+type PublishConfig struct {
+	TenantID        string            `json:"tenantId" binding:"required"`
+	ModelType       string            `json:"modelType"` // "traditional" or "openai"
+	ExternalPath    string            `json:"externalPath"`
+	RateLimiting    RateLimitConfig   `json:"rateLimiting"`
+	Authentication  AuthConfig        `json:"authentication"`
+	Metadata        map[string]string `json:"metadata"`
+}
+
+// RateLimitConfig represents rate limiting configuration
+type RateLimitConfig struct {
+	RequestsPerMinute int `json:"requestsPerMinute"`
+	RequestsPerHour   int `json:"requestsPerHour"`
+	TokensPerHour     int `json:"tokensPerHour"` // For OpenAI models
+	BurstLimit        int `json:"burstLimit"`
+}
+
+// AuthConfig represents authentication configuration
+type AuthConfig struct {
+	RequireAPIKey  bool     `json:"requireApiKey"`
+	AllowedTenants []string `json:"allowedTenants"`
+}
+
+// PublishedModel represents a published model
+type PublishedModel struct {
+	ModelName       string            `json:"modelName"`
+	Namespace       string            `json:"namespace"`
+	TenantID        string            `json:"tenantId"`
+	ModelType       string            `json:"modelType"`
+	ExternalURL     string            `json:"externalUrl"`
+	APIKey          string            `json:"apiKey"`
+	RateLimiting    RateLimitConfig   `json:"rateLimiting"`
+	Status          string            `json:"status"`
+	CreatedAt       time.Time         `json:"createdAt"`
+	UpdatedAt       time.Time         `json:"updatedAt"`
+	Usage           UsageStats        `json:"usage"`
+	Documentation   APIDocumentation  `json:"documentation"`
+}
+
+// APIKeyMetadata represents API key metadata
+type APIKeyMetadata struct {
+	KeyID       string    `json:"keyId"`
+	ModelName   string    `json:"modelName"`
+	Namespace   string    `json:"namespace"`
+	TenantID    string    `json:"tenantId"`
+	ModelType   string    `json:"modelType"`
+	CreatedAt   time.Time `json:"createdAt"`
+	ExpiresAt   time.Time `json:"expiresAt,omitempty"`
+	LastUsed    time.Time `json:"lastUsed,omitempty"`
+	IsActive    bool      `json:"isActive"`
+	Permissions []string  `json:"permissions"`
+}
+
+// UsageStats represents usage statistics
+type UsageStats struct {
+	TotalRequests   int64     `json:"totalRequests"`
+	RequestsToday   int64     `json:"requestsToday"`
+	TokensUsed      int64     `json:"tokensUsed"` // For OpenAI models
+	LastAccessTime  time.Time `json:"lastAccessTime"`
+}
+
+// APIDocumentation represents API documentation
+type APIDocumentation struct {
+	EndpointURL     string            `json:"endpointUrl"`
+	AuthHeaders     map[string]string `json:"authHeaders"`
+	ExampleRequests []ExampleRequest  `json:"exampleRequests"`
+	SDKExamples     map[string]string `json:"sdkExamples"` // Language -> code
+}
+
+// ExampleRequest represents an example API request
+type ExampleRequest struct {
+	Method      string            `json:"method"`
+	URL         string            `json:"url"`
+	Headers     map[string]string `json:"headers"`
+	Body        string            `json:"body"`
+	Description string            `json:"description"`
+}
+
+// PublishingError represents publishing-specific errors
+type PublishingError struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+	Details string `json:"details,omitempty"`
+}
+
+// Publishing request/response types
+type PublishModelRequest struct {
+	Config PublishConfig `json:"config" binding:"required"`
+}
+
+type PublishModelResponse struct {
+	Message       string        `json:"message"`
+	PublishedModel PublishedModel `json:"publishedModel"`
+}
+
+type ListPublishedModelsResponse struct {
+	PublishedModels []PublishedModel `json:"publishedModels"`
+	Total           int              `json:"total"`
+}
+
+type RotateAPIKeyResponse struct {
+	Message    string        `json:"message"`
+	NewAPIKey  string        `json:"newApiKey"`
+	UpdatedAt  time.Time     `json:"updatedAt"`
+}

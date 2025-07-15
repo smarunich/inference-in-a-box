@@ -12,14 +12,15 @@ import (
 )
 
 type Server struct {
-	Router       *gin.Engine
-	config       *Config
-	authService  *AuthService
-	modelService *ModelService
-	adminService *AdminService
+	Router            *gin.Engine
+	config            *Config
+	authService       *AuthService
+	modelService      *ModelService
+	adminService      *AdminService
+	publishingService *PublishingService
 }
 
-func NewServer(config *Config, authService *AuthService, modelService *ModelService, adminService *AdminService) *Server {
+func NewServer(config *Config, authService *AuthService, modelService *ModelService, adminService *AdminService, publishingService *PublishingService) *Server {
 	// Set Gin mode based on environment
 	if config.NodeEnv == "production" {
 		gin.SetMode(gin.ReleaseMode)
@@ -50,11 +51,12 @@ func NewServer(config *Config, authService *AuthService, modelService *ModelServ
 	router.Use(corsMiddleware())
 	
 	return &Server{
-		Router:       router,
-		config:       config,
-		authService:  authService,
-		modelService: modelService,
-		adminService: adminService,
+		Router:            router,
+		config:            config,
+		authService:       authService,
+		modelService:      modelService,
+		adminService:      adminService,
+		publishingService: publishingService,
 	}
 }
 
@@ -69,6 +71,7 @@ func (s *Server) SetupRoutes() {
 		api.POST("/admin/login", s.authService.AdminLogin)
 		api.GET("/tokens", s.authService.GetTokens)
 		api.GET("/frameworks", s.modelService.GetFrameworks)
+		api.POST("/validate-api-key", s.publishingService.ValidateAPIKey)
 
 		// Protected endpoints
 		protected := api.Group("/")
@@ -82,6 +85,13 @@ func (s *Server) SetupRoutes() {
 			protected.DELETE("/models/:modelName", s.modelService.DeleteModel)
 			protected.POST("/models/:modelName/predict", s.modelService.PredictModel)
 			protected.GET("/models/:modelName/logs", s.modelService.GetModelLogs)
+
+			// Model publishing
+			protected.POST("/models/:modelName/publish", s.publishingService.PublishModel)
+			protected.DELETE("/models/:modelName/publish", s.publishingService.UnpublishModel)
+			protected.GET("/models/:modelName/publish", s.publishingService.GetPublishedModel)
+			protected.POST("/models/:modelName/publish/rotate-key", s.publishingService.RotateAPIKey)
+			protected.GET("/published-models", s.publishingService.ListPublishedModels)
 
 			// User info
 			protected.GET("/tenant", s.authService.GetTenantInfo)

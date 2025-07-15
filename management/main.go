@@ -28,12 +28,13 @@ func main() {
 		log.Fatalf("Failed to initialize Kubernetes client: %v", err)
 	}
 	
-	authService := NewAuthService(config)
+	authService := NewAuthService(config, k8sClient)
 	modelService := NewModelService(k8sClient)
 	adminService := NewAdminService(k8sClient)
+	publishingService := NewPublishingService(k8sClient, authService)
 	
 	// Initialize HTTP server
-	server := NewServer(config, authService, modelService, adminService)
+	server := NewServer(config, authService, modelService, adminService, publishingService)
 	
 	// Setup routes
 	server.SetupRoutes()
@@ -59,6 +60,11 @@ func main() {
 		log.Println("  GET  /api/models/:name/logs - Get model logs")
 		log.Println("  GET  /api/tenant - Get tenant info")
 		log.Println("  GET  /api/frameworks - List supported frameworks")
+		log.Println("  POST /api/models/:name/publish - Publish model")
+		log.Println("  DELETE /api/models/:name/publish - Unpublish model")
+		log.Println("  GET  /api/models/:name/publish - Get published model")
+		log.Println("  POST /api/models/:name/publish/rotate-key - Rotate API key")
+		log.Println("  GET  /api/published-models - List published models")
 		log.Println("  GET  /* - Serve React application")
 		
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -118,7 +124,13 @@ func testConfiguration() {
 	}
 	
 	// Test JWT authentication
-	authService := NewAuthService(config)
+	k8sClient, err := NewK8sClient()
+	if err != nil {
+		log.Printf("⚠ K8s client initialization failed: %v", err)
+		return
+	}
+	
+	authService := NewAuthService(config, k8sClient)
 	user, err := authService.ValidateToken("super-admin-token")
 	if err == nil && user.IsAdmin {
 		log.Println("✅ JWT validation works")
