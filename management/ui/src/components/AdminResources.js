@@ -4,7 +4,14 @@ import toast from 'react-hot-toast';
 import { RefreshCw, Box, Globe, Network, CheckCircle, XCircle, AlertCircle, ArrowRight, Zap, Shield } from 'lucide-react';
 
 const AdminResources = () => {
-  const [resources, setResources] = useState(null);
+  const [resources, setResources] = useState({
+    pods: [],
+    services: [],
+    gateways: [],
+    httpRoutes: [],
+    virtualServices: [],
+    istioGateways: []
+  });
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('pods');
   const api = useApi();
