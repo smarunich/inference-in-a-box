@@ -782,7 +782,7 @@ func (s *PublishingService) createAIGatewayRoute(namespace, modelName, routeName
 	
 	// Create AIGatewayRoute configuration
 	aiGatewayRoute := map[string]interface{}{
-		"apiVersion": "gateway.ai/v1alpha1",
+		"apiVersion": "aigateway.envoyproxy.io/v1alpha1",
 		"kind":       "AIGatewayRoute",
 		"metadata": map[string]interface{}{
 			"name":      routeName,
