@@ -683,6 +683,3 @@ kind delete cluster --name inference-in-a-box
 
 ## 🤝 Contributing
 This is a demonstration project showcasing enterprise AI/ML deployment patterns. For questions or improvements, please refer to the documentation or create an issue.
-
-## 📄 License
-MIT License - see LICENSE file for details.
