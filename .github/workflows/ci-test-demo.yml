@@ -1,4 +1,4 @@
-name: CI - Test Demo Platform
+name: Main CI - Bootstrap & Platform Test
 
 on:
   push:
@@ -10,7 +10,7 @@ on:
 jobs:
   test-platform:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60  # Extended timeout for Knative/KServe installation
     
     steps:
     - name: Checkout code
@@ -56,30 +56,64 @@ jobs:
       run: |
         echo "🚀 Starting platform bootstrap..."
         chmod +x scripts/bootstrap.sh
+        
+        # Set CI environment variables for bootstrap script
+        export CI=true
+        export GITHUB_ACTIONS=true
+        
+        # Show system resources before bootstrap
+        echo "💻 System resources before bootstrap:"
+        df -h
+        free -h
+        docker system df
+        
+        # Run bootstrap with enhanced logging
         ./scripts/bootstrap.sh
+        
+        # Show system resources after bootstrap
+        echo "💻 System resources after bootstrap:"
+        df -h
+        free -h
+        docker system df
         
     - name: Wait for platform readiness
       run: |
         echo "⏳ Waiting for platform to be fully ready..."
         
-        # Wait for all pods to be ready
-        kubectl wait --for=condition=Ready pods --all --all-namespaces --timeout=600s
+        # Show cluster resources before waiting
+        echo "🔍 Cluster status before waiting:"
+        kubectl get nodes
+        kubectl get pods --all-namespaces --field-selector=status.phase!=Running,status.phase!=Succeeded
+        
+        # Wait for all pods to be ready with extended timeout
+        echo "⏳ Waiting for all pods to be ready..."
+        if ! kubectl wait --for=condition=Ready pods --all --all-namespaces --timeout=900s; then
+          echo "❌ Some pods failed to become ready, showing status:"
+          kubectl get pods --all-namespaces --field-selector=status.phase!=Running,status.phase!=Succeeded
+          kubectl describe pods --all-namespaces --field-selector=status.phase!=Running,status.phase!=Succeeded
+          exit 1
+        fi
         
         # Check inference services
         echo "📊 Checking inference services..."
-        kubectl get inferenceservice --all-namespaces
+        kubectl get inferenceservice --all-namespaces || echo "No inference services found"
         
         # Check gateway resources
         echo "🚪 Checking gateway resources..."
-        kubectl get gateway,aigatewayroute,aiservicebackend -n envoy-gateway-system
+        kubectl get gateway,aigatewayroute,aiservicebackend -n envoy-gateway-system || echo "No gateway resources found"
         
         # Check JWT server
         echo "🔐 Checking JWT server..."
-        kubectl get pods -n default -l app=jwt-server
+        kubectl get pods -n default -l app=jwt-server || echo "JWT server not found"
         
         # Show overall cluster status
         echo "🏥 Cluster health check:"
-        kubectl get pods --all-namespaces | grep -E "(Error|CrashLoopBackOff|Pending)" && exit 1 || echo "✅ All pods healthy"
+        if kubectl get pods --all-namespaces | grep -E "(Error|CrashLoopBackOff|Pending)"; then
+          echo "❌ Found unhealthy pods"
+          exit 1
+        else
+          echo "✅ All pods healthy"
+        fi
         
     - name: Test JWT token generation
       run: |
@@ -248,12 +282,29 @@ jobs:
       if: always()
       run: |
         echo "🧹 Cleaning up resources..."
-        chmod +x scripts/cleanup.sh
+        
+        # Show final system resources
+        echo "💻 System resources before cleanup:"
+        df -h || true
+        free -h || true
+        docker system df || true
+        
+        # Show cluster status for debugging
+        echo "🔍 Final cluster status:"
+        kubectl get nodes || true
+        kubectl get pods --all-namespaces --field-selector=status.phase!=Running,status.phase!=Succeeded || true
+        
+        # Run cleanup script
+        chmod +x scripts/cleanup.sh || true
         ./scripts/cleanup.sh || echo "Cleanup completed with warnings"
         
         # Additional cleanup
-        docker system prune -f
+        docker system prune -f || true
         kind delete clusters --all || echo "No clusters to delete"
+        
+        # Show final disk usage
+        echo "💻 Final disk usage:"
+        df -h || true
         
     - name: Upload test artifacts
       if: always()

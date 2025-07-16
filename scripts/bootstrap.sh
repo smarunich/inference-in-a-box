@@ -185,20 +185,82 @@ install_kserve() {
     
     # Wait for Knative Serving to be ready
     log "Waiting for Knative Serving to be ready..."
-    kubectl wait --for=condition=ready pod -l app=controller -n knative-serving --timeout=300s
-    kubectl wait --for=condition=ready pod -l app=webhook -n knative-serving --timeout=300s
+    
+    # Use longer timeout for CI environments (GitHub Actions)
+    KNATIVE_TIMEOUT="300s"
+    if [[ "${CI:-false}" == "true" ]] || [[ "${GITHUB_ACTIONS:-false}" == "true" ]]; then
+        KNATIVE_TIMEOUT="600s"
+        log "CI environment detected, using extended timeout: ${KNATIVE_TIMEOUT}"
+    fi
+    
+    # Wait for controller with retry logic
+    log "Waiting for Knative controller to be ready (timeout: ${KNATIVE_TIMEOUT})..."
+    if ! kubectl wait --for=condition=ready pod -l app=controller -n knative-serving --timeout=${KNATIVE_TIMEOUT}; then
+        log "Knative controller not ready, checking pod status..."
+        kubectl get pods -n knative-serving -l app=controller
+        kubectl describe pods -n knative-serving -l app=controller
+        
+        # Retry once with shorter timeout
+        log "Retrying Knative controller wait..."
+        if ! kubectl wait --for=condition=ready pod -l app=controller -n knative-serving --timeout=300s; then
+            error "Knative controller failed to become ready after retries"
+            exit 1
+        fi
+    fi
+    
+    # Wait for webhook with retry logic
+    log "Waiting for Knative webhook to be ready (timeout: ${KNATIVE_TIMEOUT})..."
+    if ! kubectl wait --for=condition=ready pod -l app=webhook -n knative-serving --timeout=${KNATIVE_TIMEOUT}; then
+        log "Knative webhook not ready, checking pod status..."
+        kubectl get pods -n knative-serving -l app=webhook
+        kubectl describe pods -n knative-serving -l app=webhook
+        
+        # Retry once with shorter timeout
+        log "Retrying Knative webhook wait..."
+        if ! kubectl wait --for=condition=ready pod -l app=webhook -n knative-serving --timeout=300s; then
+            error "Knative webhook failed to become ready after retries"
+            exit 1
+        fi
+    fi
     
     # Install KServe CRDs using Helm
     log "Installing KServe CRDs (this may take several minutes)..."
-    helm install kserve-crd oci://ghcr.io/kserve/charts/kserve-crd --version v${KSERVE_VERSION} --namespace kserve --create-namespace --wait --timeout=600s
+    
+    # Use extended timeout for CI environments
+    HELM_TIMEOUT="600s"
+    if [[ "${CI:-false}" == "true" ]] || [[ "${GITHUB_ACTIONS:-false}" == "true" ]]; then
+        HELM_TIMEOUT="900s"
+        log "CI environment detected, using extended Helm timeout: ${HELM_TIMEOUT}"
+    fi
+    
+    helm install kserve-crd oci://ghcr.io/kserve/charts/kserve-crd --version v${KSERVE_VERSION} --namespace kserve --create-namespace --wait --timeout=${HELM_TIMEOUT}
 
     log "Installing KServe controller..."
-    helm install kserve oci://ghcr.io/kserve/charts/kserve --version v${KSERVE_VERSION} --namespace kserve --create-namespace --wait --timeout=600s \
+    helm install kserve oci://ghcr.io/kserve/charts/kserve --version v${KSERVE_VERSION} --namespace kserve --create-namespace --wait --timeout=${HELM_TIMEOUT} \
         --set-string kserve.controller.deploymentMode="Serverless"
         
     # Wait for KServe controller to be ready
     log "Waiting for KServe controller to be ready (this may take several minutes)..."
-    kubectl wait --for=condition=ready pod -l control-plane=kserve-controller-manager -n kserve --timeout=600s
+    
+    # Use extended timeout for CI environments
+    KSERVE_TIMEOUT="600s"
+    if [[ "${CI:-false}" == "true" ]] || [[ "${GITHUB_ACTIONS:-false}" == "true" ]]; then
+        KSERVE_TIMEOUT="900s"
+        log "CI environment detected, using extended timeout for KServe: ${KSERVE_TIMEOUT}"
+    fi
+    
+    if ! kubectl wait --for=condition=ready pod -l control-plane=kserve-controller-manager -n kserve --timeout=${KSERVE_TIMEOUT}; then
+        log "KServe controller not ready, checking pod status..."
+        kubectl get pods -n kserve -l control-plane=kserve-controller-manager
+        kubectl describe pods -n kserve -l control-plane=kserve-controller-manager
+        
+        # Show resource usage for debugging
+        kubectl top pods -n kserve --no-headers 2>/dev/null || log "Metrics not available"
+        kubectl top nodes --no-headers 2>/dev/null || log "Node metrics not available"
+        
+        error "KServe controller failed to become ready"
+        exit 1
+    fi
     
     # Additional wait for the webhook service to be fully operational
     log "Waiting for KServe webhook service to be ready..."

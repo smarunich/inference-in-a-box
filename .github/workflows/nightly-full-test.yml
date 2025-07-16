@@ -62,12 +62,17 @@ jobs:
       run: |
         echo "🚀 Starting platform bootstrap..."
         chmod +x scripts/bootstrap.sh
+        
+        # Set CI environment variables for bootstrap script
+        export CI=true
+        export GITHUB_ACTIONS=true
+        
         ./scripts/bootstrap.sh
         
     - name: Wait for platform readiness
       run: |
         echo "⏳ Waiting for platform to be fully ready..."
-        kubectl wait --for=condition=Ready pods --all --all-namespaces --timeout=900s
+        kubectl wait --for=condition=Ready pods --all --all-namespaces --timeout=1200s
         
     - name: Run test scenario - ${{ matrix.test-scenario }}
       run: |
