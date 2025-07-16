@@ -390,3 +390,31 @@ type RotateAPIKeyResponse struct {
 	NewAPIKey  string        `json:"newApiKey"`
 	UpdatedAt  time.Time     `json:"updatedAt"`
 }
+
+// Test execution types for DeveloperConsole
+type TestExecutionRequest struct {
+	ModelName         string            `json:"modelName" binding:"required"`
+	TestData          interface{}       `json:"testData" binding:"required"`
+	CustomEndpoint    string            `json:"customEndpoint,omitempty"`
+	CustomHeaders     []HeaderSetting   `json:"customHeaders,omitempty"`
+	CustomMethod      string            `json:"customMethod,omitempty"`
+	UseCustomConfig   bool              `json:"useCustomConfig"`
+}
+
+type TestExecutionResponse struct {
+	Success      bool                   `json:"success"`
+	Data         interface{}            `json:"data,omitempty"`
+	Error        string                 `json:"error,omitempty"`
+	Request      interface{}            `json:"request"`
+	Endpoint     string                 `json:"endpoint"`
+	Status       string                 `json:"status"`
+	StatusCode   int                    `json:"statusCode"`
+	ResponseTime int64                  `json:"responseTime"`
+	Headers      map[string]string      `json:"headers,omitempty"`
+	Timestamp    time.Time              `json:"timestamp"`
+}
+
+type TestHistoryResponse struct {
+	Tests []TestExecutionResponse `json:"tests"`
+	Total int                     `json:"total"`
+}

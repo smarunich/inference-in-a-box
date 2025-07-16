@@ -40,7 +40,18 @@ const DeveloperConsole = () => {
 
   useEffect(() => {
     fetchPublishedModels();
+    fetchTestHistory();
   }, []);
+
+  const fetchTestHistory = async () => {
+    try {
+      const response = await api.getTestHistory();
+      setTestHistory(response.data.tests || []);
+    } catch (error) {
+      console.error('Error fetching test history:', error);
+      // Don't show error toast for test history as it's not critical
+    }
+  };
 
   const fetchPublishedModels = async () => {
     try {
@@ -192,81 +203,51 @@ const DeveloperConsole = () => {
     }
 
     setTestLoading(true);
-    const startTime = Date.now();
 
     try {
       const requestData = JSON.parse(testRequest);
       
-      // Use custom configuration if enabled
-      const endpoint = useCustomConfig && customEndpoint 
-        ? customEndpoint
-        : selectedModel.modelType === 'openai' 
-          ? `${selectedModel.externalURL}/chat/completions`
-          : `${selectedModel.externalURL}/predict`;
-
-      // Build headers from custom configuration or defaults
-      const headers = useCustomConfig 
-        ? customHeaders.reduce((acc, header) => {
-            if (header.key && header.value) {
-              acc[header.key] = header.value;
-            }
-            return acc;
-          }, {})
-        : {
-            'Content-Type': 'application/json',
-            'X-API-Key': selectedModel.apiKey
-          };
-
-      const method = useCustomConfig ? customMethod : 'POST';
-
-      const response = await fetch(endpoint, {
-        method: method,
-        headers: headers,
-        body: JSON.stringify(requestData)
-      });
-
-      const result = await response.json();
-      const endTime = Date.now();
-      const responseTime = endTime - startTime;
-
-      const testResult = {
-        success: response.ok,
-        data: result,
-        request: requestData,
-        endpoint: endpoint,
-        status: response.status,
-        statusText: response.statusText,
-        responseTime: responseTime,
-        headers: Object.fromEntries(response.headers.entries()),
-        timestamp: new Date().toISOString()
+      // Build test execution request
+      const testExecutionRequest = {
+        modelName: selectedModel.modelName,
+        testData: requestData,
+        useCustomConfig: useCustomConfig,
+        customEndpoint: useCustomConfig ? customEndpoint : '',
+        customMethod: useCustomConfig ? customMethod : 'POST',
+        customHeaders: useCustomConfig ? customHeaders : []
       };
+
+      // Execute test via management service
+      const response = await api.executeTest(testExecutionRequest);
+      const testResult = response.data;
 
       setTestResponse(testResult);
       
       // Add to history
       setTestHistory(prev => [testResult, ...prev.slice(0, 9)]); // Keep last 10 tests
       
-      if (response.ok) {
-        toast.success(`Test completed successfully (${responseTime}ms)`);
+      if (testResult.success) {
+        toast.success(`Test completed successfully (${testResult.responseTime}ms)`);
       } else {
-        toast.error(`Test failed: ${result.error || 'Unknown error'}`);
+        toast.error(`Test failed: ${testResult.error || 'Unknown error'}`);
       }
     } catch (error) {
       const errorResult = {
         success: false,
-        error: error.message,
+        error: error.response?.data?.error || error.message,
         request: testRequest,
         endpoint: selectedModel.modelType === 'openai' 
           ? `${selectedModel.externalURL}/chat/completions`
           : `${selectedModel.externalURL}/predict`,
         status: 'Network Error',
-        responseTime: Date.now() - startTime,
-        timestamp: new Date().toISOString()
+        statusCode: error.response?.status || 0,
+        responseTime: 0,
+        timestamp: new Date()
       };
 
       setTestResponse(errorResult);
       setTestHistory(prev => [errorResult, ...prev.slice(0, 9)]);
-      toast.error(`Network error: ${error.message}`);
+      toast.error(`Network error: ${error.response?.data?.error || error.message}`);
     } finally {
       setTestLoading(false);
     }
@@ -420,7 +401,7 @@ fetch(url, {
           Developer Console
         </h2>
         <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
-          Test your published models with real external API calls
+          Test your published models through the local management service
         </div>
       </div>
 

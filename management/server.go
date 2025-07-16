@@ -18,9 +18,10 @@ type Server struct {
 	modelService      *ModelService
 	adminService      *AdminService
 	publishingService *PublishingService
+	testExecutionService *TestExecutionService
 }
 
-func NewServer(config *Config, authService *AuthService, modelService *ModelService, adminService *AdminService, publishingService *PublishingService) *Server {
+func NewServer(config *Config, authService *AuthService, modelService *ModelService, adminService *AdminService, publishingService *PublishingService, testExecutionService *TestExecutionService) *Server {
 	// Set Gin mode based on environment
 	if config.NodeEnv == "production" {
 		gin.SetMode(gin.ReleaseMode)
@@ -57,6 +58,7 @@ func NewServer(config *Config, authService *AuthService, modelService *ModelServ
 		modelService:      modelService,
 		adminService:      adminService,
 		publishingService: publishingService,
+		testExecutionService: testExecutionService,
 	}
 }
 
@@ -96,6 +98,11 @@ func (s *Server) SetupRoutes() {
 
 			// User info
 			protected.GET("/tenant", s.authService.GetTenantInfo)
+
+			// Test execution endpoints for published models
+			protected.POST("/publish/test/execute", s.testExecutionService.ExecuteTest)
+			protected.GET("/publish/test/history", s.testExecutionService.GetTestHistory)
+			protected.POST("/publish/test/validate", s.testExecutionService.ValidateTestRequest)
 
 			// Admin-only endpoints
 			admin := protected.Group("/admin")
