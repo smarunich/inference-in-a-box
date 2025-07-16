@@ -36,6 +36,12 @@ var InferenceServiceGVR = schema.GroupVersionResource{
 }
 
 // Gateway API GVRs
+var GatewayGVR = schema.GroupVersionResource{
+	Group:    "gateway.networking.k8s.io",
+	Version:  "v1",
+	Resource: "gateways",
+}
+
 var HTTPRouteGVR = schema.GroupVersionResource{
 	Group:    "gateway.networking.k8s.io",
 	Version:  "v1",
@@ -323,17 +329,10 @@ func (k *K8sClient) GetServices(namespace string) ([]corev1.Service, error) {
 func (k *K8sClient) GetGateways(namespace string) ([]map[string]interface{}, error) {
 	ctx := context.Background()
 	
-	// Gateway API Gateway GVR
-	gatewayGVR := schema.GroupVersionResource{
-		Group:    "gateway.networking.k8s.io",
-		Version:  "v1",
-		Resource: "gateways",
-	}
-	
 	var result []map[string]interface{}
 	
 	if namespace == "" {
-		list, err := k.dynamicClient.Resource(gatewayGVR).List(ctx, metav1.ListOptions{})
+		list, err := k.dynamicClient.Resource(GatewayGVR).List(ctx, metav1.ListOptions{})
 		if err != nil {
 			return nil, fmt.Errorf("failed to list gateways: %w", err)
 		}
@@ -341,7 +340,7 @@ func (k *K8sClient) GetGateways(namespace string) ([]map[string]interface{}, err
 			result = append(result, item.Object)
 		}
 	} else {
-		list, err := k.dynamicClient.Resource(gatewayGVR).Namespace(namespace).List(ctx, metav1.ListOptions{})
+		list, err := k.dynamicClient.Resource(GatewayGVR).Namespace(namespace).List(ctx, metav1.ListOptions{})
 		if err != nil {
 			return nil, fmt.Errorf("failed to list gateways in namespace %s: %w", namespace, err)
 		}
@@ -351,6 +350,34 @@ func (k *K8sClient) GetGateways(namespace string) ([]map[string]interface{}, err
 	}
 	
 	return result, nil
+}
+
+// GetGateway retrieves a specific Gateway resource
+func (k *K8sClient) GetGateway(namespace, name string) (map[string]interface{}, error) {
+	ctx := context.Background()
+	
+	obj, err := k.dynamicClient.Resource(GatewayGVR).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get gateway %s/%s: %w", namespace, name, err)
+	}
+	
+	return obj.Object, nil
+}
+
+// UpdateGateway updates a Gateway resource
+func (k *K8sClient) UpdateGateway(namespace string, gateway map[string]interface{}) error {
+	ctx := context.Background()
+	
+	unstructuredGateway := &unstructured.Unstructured{
+		Object: gateway,
+	}
+	
+	_, err := k.dynamicClient.Resource(GatewayGVR).Namespace(namespace).Update(ctx, unstructuredGateway, metav1.UpdateOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to update gateway: %w", err)
+	}
+	
+	return nil
 }
 
 // GetHTTPRoutes retrieves Gateway API HTTPRoutes

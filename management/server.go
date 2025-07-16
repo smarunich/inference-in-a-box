@@ -88,6 +88,7 @@ func (s *Server) SetupRoutes() {
 
 			// Model publishing
 			protected.POST("/models/:modelName/publish", s.publishingService.PublishModel)
+			protected.PUT("/models/:modelName/publish", s.publishingService.UpdatePublishedModel)
 			protected.DELETE("/models/:modelName/publish", s.publishingService.UnpublishModel)
 			protected.GET("/models/:modelName/publish", s.publishingService.GetPublishedModel)
 			protected.POST("/models/:modelName/publish/rotate-key", s.publishingService.RotateAPIKey)

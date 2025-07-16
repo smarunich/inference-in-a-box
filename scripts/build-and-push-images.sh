@@ -11,6 +11,9 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 REGISTRY="us-east1-docker.pkg.dev/dogfood-cx/registryrepository"
 TAG="${TAG:-latest}"
 
+# Support build-only mode (skip push)
+SKIP_PUSH="${SKIP_PUSH:-false}"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -66,6 +69,11 @@ check_docker() {
 
 # Configure Docker for Google Artifact Registry
 configure_docker() {
+    if [ "$SKIP_PUSH" = "true" ]; then
+        print_warning "Skipping Docker registry configuration (build-only mode)"
+        return
+    fi
+    
     print_step "Configuring Docker for Google Artifact Registry"
     
     # Check if gcloud is available
@@ -120,17 +128,31 @@ show_image_info() {
 
 # Main execution
 main() {
-    echo -e "${BLUE}Build and Push Docker Images${NC}"
-    echo -e "${BLUE}============================${NC}"
+    if [ "$SKIP_PUSH" = "true" ]; then
+        echo -e "${BLUE}Build Docker Images (Build-Only Mode)${NC}"
+        echo -e "${BLUE}=====================================${NC}"
+    else
+        echo -e "${BLUE}Build and Push Docker Images${NC}"
+        echo -e "${BLUE}============================${NC}"
+    fi
     
     check_docker
     configure_docker
     build_management_service
-    push_images
-    update_manifests
+    
+    if [ "$SKIP_PUSH" = "true" ]; then
+        print_warning "Skipping image push (build-only mode)"
+    else
+        push_images
+    fi
+    
     show_image_info
     
-    print_success "Docker images built and pushed successfully!"
+    if [ "$SKIP_PUSH" = "true" ]; then
+        print_success "Docker images built successfully!"
+    else
+        print_success "Docker images built and pushed successfully!"
+    fi
 }
 
 # Handle script interruption
@@ -153,6 +175,9 @@ while [[ $# -gt 0 ]]; do
             echo "  --tag TAG         Docker image tag (default: latest)"
             echo "  --registry REG    Docker registry (default: us-east1-docker.pkg.dev/dogfood-cx/registryrepository)"
             echo "  --help            Show this help message"
+            echo ""
+            echo "Environment Variables:"
+            echo "  SKIP_PUSH=true    Build images only, skip pushing to registry"
             exit 0
             ;;
         *)

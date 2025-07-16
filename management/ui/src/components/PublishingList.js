@@ -86,9 +86,7 @@ const PublishingList = () => {
     }
 
     try {
-      // Use the model's tenant or the user's tenant as namespace
-      const namespace = modelTenant || user?.tenant;
-      await api.unpublishModel(modelName, namespace);
+      await api.unpublishModel(modelName);
       toast.success(`Model "${modelName}" unpublished successfully`);
       fetchPublishedModels();
     } catch (error) {
@@ -96,6 +94,7 @@ const PublishingList = () => {
       console.error('Error unpublishing model:', error);
     }
   };
+
 
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
