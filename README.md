@@ -252,7 +252,16 @@ kubectl version --client  # kubectl 1.24+
 helm version             # Helm 3.12+
 curl --version           # curl (any recent version)
 jq --version             # jq 1.6+
+
+# Optional but recommended
+istioctl version         # Istio CLI (auto-installed by bootstrap)
 ```
+
+### System Requirements
+- **Memory**: Minimum 8GB RAM (16GB recommended for full observability stack)
+- **CPU**: 4+ cores recommended
+- **Disk**: 20GB+ free space for container images
+- **OS**: macOS, Linux, or Windows with WSL2
 
 ### One-Command Bootstrap
 ```bash
@@ -266,12 +275,21 @@ cd inference-in-a-box
 # Run demo scenarios
 ./scripts/demo.sh
 
-# Access the platform
+# Access the platform (run these in separate terminals)
+kubectl port-forward -n monitoring svc/prometheus-grafana 3000:80 &
+kubectl port-forward -n envoy-gateway-system svc/envoy-ai-gateway 8080:80 &
+kubectl port-forward -n monitoring svc/prometheus-kube-prometheus-prometheus 9090:9090 &
+kubectl port-forward -n monitoring svc/kiali 20001:20001 &
+kubectl port-forward -n monitoring svc/jaeger-query 16686:16686 &
+kubectl port-forward -n default svc/management-service 8085:80 &
+
 echo "🎉 Platform is ready!"
 echo "🤖 AI Gateway (Primary Entry): http://localhost:8080"
 echo "📊 Grafana: http://localhost:3000 (admin/prom-operator)"
 echo "📈 Prometheus: http://localhost:9090"
 echo "🗺️ Kiali: http://localhost:20001"
+echo "🔍 Jaeger: http://localhost:16686"
+echo "🔧 Management UI: http://localhost:8085"
 echo ""
 echo "💡 All AI/ML requests go through the AI Gateway first!"
 echo "   The AI Gateway handles JWT auth and routes to Istio Gateway"
@@ -589,26 +607,82 @@ curl -H "Authorization: Bearer $JWT_TOKEN" \
 # 5. Forwarding to Istio Gateway (Tier-2)
 ```
 
-## Getting Started
+## 🚀 Getting Started
 
-See [demo.md](demo.md) for comprehensive demo instructions and [CLAUDE.md](CLAUDE.md) for detailed deployment guidance.
+### Quick Start Guide
+1. **Prerequisites**: Ensure Docker, Kind, kubectl, and Helm are installed
+2. **Bootstrap**: Run `./scripts/bootstrap.sh` (takes 10-15 minutes)
+3. **Access Services**: Use the port-forward commands above
+4. **Run Demos**: Execute `./scripts/demo.sh` for interactive scenarios
+5. **Get JWT Tokens**: Run `./scripts/get-jwt-tokens.sh` for authentication
 
-## Troubleshooting
+### Development Workflow
+- **Management Service**: See [`management/README.md`](management/README.md) for Go backend + React frontend development
+- **Configuration**: All Kubernetes configs are in [`configs/`](configs/) directory
+- **Scripts**: Automation scripts in [`scripts/`](scripts/) for deployment and testing
+
+### Documentation
+- **Architecture**: [`docs/architecture.md`](docs/architecture.md) - Detailed system design
+- **Demo Guide**: [`demo.md`](demo.md) - Comprehensive demo instructions
+- **Claude Guide**: [`CLAUDE.md`](CLAUDE.md) - AI assistant deployment guidance
+- **Getting Started**: [`docs/getting-started.md`](docs/getting-started.md) - Step-by-step setup
+- **Usage**: [`docs/usage.md`](docs/usage.md) - API usage and examples
+
+## 🔧 Troubleshooting
 
 ### Common Issues
 - **Gateway not ready**: Check `kubectl get gateway -n envoy-gateway-system`
-- **JWT validation fails**: Verify JWKS endpoint is accessible
+- **JWT validation fails**: Verify JWKS endpoint is accessible with `kubectl get pods -n default -l app=jwt-server`
 - **Rate limiting**: Check rate limit policies and quotas
-- **Model not accessible**: Verify model is ready and routable
+- **Model not accessible**: Verify model is ready with `kubectl get inferenceservice --all-namespaces`
+- **Port conflicts**: Ensure ports 3000, 8080, 8085, 9090, 16686, 20001 are available
 
 ### Verification Commands
 ```bash
+# Check overall cluster health
+kubectl get pods --all-namespaces | grep -v Running
+
 # Check gateway status
 kubectl get gatewayclass,gateway,httproute -n envoy-gateway-system
 
 # Verify AI Gateway pods
 kubectl get pods -n envoy-gateway-system
 
-# Check model connectivity
+# Check model connectivity and status
 kubectl get inferenceservice --all-namespaces
+kubectl describe inferenceservice sklearn-iris -n tenant-a
+
+# Test JWT server
+kubectl port-forward -n default svc/jwt-server 8081:8080 &
+curl http://localhost:8081/.well-known/jwks.json
+
+# Check observability stack
+kubectl get pods -n monitoring
 ```
+
+### Cleanup
+```bash
+# Complete cleanup
+./scripts/cleanup.sh
+
+# Or manual cleanup
+kind delete cluster --name inference-in-a-box
+```
+
+## 📝 Version Information
+- **Istio**: v1.26.2
+- **KServe**: v0.15.2
+- **Knative**: v1.18.1
+- **Envoy Gateway**: v1.4.1
+- **Envoy AI Gateway**: v0.2.1
+- **Cert Manager**: v1.18.1
+- **Prometheus Stack**: v75.6.0
+- **Grafana**: v12.0.2
+- **Jaeger**: v3.4.1
+- **Kiali**: v2.11.0
+
+## 🤝 Contributing
+This is a demonstration project showcasing enterprise AI/ML deployment patterns. For questions or improvements, please refer to the documentation or create an issue.
+
+## 📄 License
+MIT License - see LICENSE file for details.
