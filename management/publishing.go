@@ -993,6 +993,12 @@ func (s *PublishingService) createAIGatewayRoute(namespace, modelName, routeName
 		externalPath = fmt.Sprintf("/v1/models/%s", modelName)
 	}
 
+	// Determine hostname
+	hostname := config.PublicHostname
+	if hostname == "" {
+		hostname = "api.router.inference-in-a-box"
+	}
+
 	// Create AIServiceBackend resource (directly referencing KServe service)
 	backendName := fmt.Sprintf("%s-backend", modelName)
 	if err := s.createAIServiceBackend(namespace, modelName, backendName); err != nil {
@@ -1002,6 +1008,11 @@ func (s *PublishingService) createAIGatewayRoute(namespace, modelName, routeName
 	// Create ReferenceGrant for cross-namespace access
 	if err := s.createReferenceGrant(namespace, modelName); err != nil {
 		return "", fmt.Errorf("failed to create ReferenceGrant: %w", err)
+	}
+
+	// Update Gateway to include this hostname
+	if err := s.updateGatewayForHostname(hostname); err != nil {
+		return "", fmt.Errorf("failed to update gateway for hostname %s: %w", hostname, err)
 	}
 	
 	// Create AIGatewayRoute configuration
@@ -1016,6 +1027,7 @@ func (s *PublishingService) createAIGatewayRoute(namespace, modelName, routeName
 				"model-name": modelName,
 				"tenant":     namespace,
 				"type":       "openai",
+				"hostname":   hostname,
 			},
 		},
 		"spec": map[string]interface{}{
@@ -1073,10 +1085,6 @@ func (s *PublishingService) createAIGatewayRoute(namespace, modelName, routeName
 	}
 	
 	// Return the external URL using the configured hostname
-	hostname := config.PublicHostname
-	if hostname == "" {
-		hostname = "api.router.inference-in-a-box"
-	}
 	return fmt.Sprintf("https://%s%s", hostname, externalPath), nil
 }
 
@@ -1596,10 +1604,16 @@ func (s *PublishingService) createReferenceGrant(namespace, modelName string) er
 	return s.k8sClient.CreateReferenceGrant(namespace, referenceGrant)
 }
 
-// updateGatewayForHostname updates the Gateway resource to include a new hostname
+// updateGatewayForHostname intelligently updates the Gateway resource for hostname support
 func (s *PublishingService) updateGatewayForHostname(hostname string) error {
 	gatewayNamespace := "envoy-gateway-system"
 	gatewayName := "ai-inference-gateway"
+	
+	// Check if hostname is already covered by wildcard patterns
+	if s.isHostnameCoveredByWildcard(hostname) {
+		log.Printf("Hostname %s is already covered by wildcard patterns, skipping gateway update", hostname)
+		return nil
+	}
 	
 	// Get the current Gateway configuration
 	gateway, err := s.k8sClient.GetGateway(gatewayNamespace, gatewayName)
@@ -1619,37 +1633,18 @@ func (s *PublishingService) updateGatewayForHostname(hostname string) error {
 		return fmt.Errorf("gateway listeners is not an array")
 	}
 	
-	// Track if hostname already exists
-	hostnameExists := false
-	
 	// Check if hostname already exists in any listener
-	for _, listener := range listeners {
-		if l, ok := listener.(map[string]interface{}); ok {
-			if existingHostname, exists := l["hostname"]; exists {
-				if existingHostname == hostname {
-					hostnameExists = true
-					break
-				}
-			}
-		}
+	if s.hostnameExistsInListeners(listeners, hostname) {
+		log.Printf("Hostname %s already exists in gateway listeners", hostname)
+		return nil
 	}
 	
-	// If hostname doesn't exist, add it to the HTTPS listener
-	if !hostnameExists {
-		for i, listener := range listeners {
-			if l, ok := listener.(map[string]interface{}); ok {
-				if name, exists := l["name"]; exists && name == "https" {
-					// For now, we'll replace the hostname rather than adding multiple
-					// In a production system, you might want to support multiple hostnames
-					l["hostname"] = hostname
-					listeners[i] = l
-					break
-				}
-			}
-		}
-		
+	// Add hostname to appropriate listeners if needed
+	updatedListeners, updated := s.addHostnameToListeners(listeners, hostname)
+	
+	if updated {
 		// Update the listeners in the spec
-		spec["listeners"] = listeners
+		spec["listeners"] = updatedListeners
 		
 		// Update the Gateway resource
 		if err := s.k8sClient.UpdateGateway(gatewayNamespace, gateway); err != nil {
@@ -1660,5 +1655,101 @@ func (s *PublishingService) updateGatewayForHostname(hostname string) error {
 	}
 	
 	return nil
+}
+
+// isHostnameCoveredByWildcard checks if hostname is covered by existing wildcard patterns
+func (s *PublishingService) isHostnameCoveredByWildcard(hostname string) bool {
+	// Check if hostname matches *.inference-in-a-box pattern
+	if strings.HasSuffix(hostname, ".inference-in-a-box") {
+		return true
+	}
+	
+	// Check if it's the default hostname
+	if hostname == "api.router.inference-in-a-box" {
+		return true
+	}
+	
+	return false
+}
+
+// hostnameExistsInListeners checks if hostname already exists in listeners
+func (s *PublishingService) hostnameExistsInListeners(listeners []interface{}, hostname string) bool {
+	for _, listener := range listeners {
+		if l, ok := listener.(map[string]interface{}); ok {
+			if existingHostname, exists := l["hostname"]; exists {
+				if existingHostname == hostname {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// addHostnameToListeners adds hostname to listeners if needed, returns updated listeners and bool if updated
+func (s *PublishingService) addHostnameToListeners(listeners []interface{}, hostname string) ([]interface{}, bool) {
+	updated := false
+	
+	// For custom hostnames that don't match our patterns, add specific listeners
+	if !s.isHostnameCoveredByWildcard(hostname) {
+		// Add to both HTTP and HTTPS listeners as new listeners
+		httpListener := map[string]interface{}{
+			"name":     fmt.Sprintf("http-custom-%s", s.sanitizeHostnameForName(hostname)),
+			"protocol": "HTTP",
+			"port":     80,
+			"hostname": hostname,
+			"allowedRoutes": map[string]interface{}{
+				"namespaces": map[string]interface{}{
+					"from": "All",
+				},
+			},
+		}
+		
+		httpsListener := map[string]interface{}{
+			"name":     fmt.Sprintf("https-custom-%s", s.sanitizeHostnameForName(hostname)),
+			"protocol": "HTTPS",
+			"port":     443,
+			"hostname": hostname,
+			"allowedRoutes": map[string]interface{}{
+				"namespaces": map[string]interface{}{
+					"from": "All",
+				},
+			},
+			"tls": map[string]interface{}{
+				"mode": "Terminate",
+				"certificateRefs": []interface{}{
+					map[string]interface{}{
+						"kind": "Secret",
+						"name": "ai-gateway-tls",
+					},
+				},
+				"options": map[string]interface{}{
+					"tls.cipher_suites":       "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256",
+					"tls.min_protocol_version": "TLSv1.2",
+					"tls.max_protocol_version": "TLSv1.3",
+				},
+			},
+		}
+		
+		// Append new listeners
+		listeners = append(listeners, httpListener, httpsListener)
+		updated = true
+	}
+	
+	return listeners, updated
+}
+
+// sanitizeHostnameForName converts hostname to valid Kubernetes name format
+func (s *PublishingService) sanitizeHostnameForName(hostname string) string {
+	// Replace dots and other invalid characters with dashes
+	sanitized := strings.ReplaceAll(hostname, ".", "-")
+	sanitized = strings.ReplaceAll(sanitized, "_", "-")
+	
+	// Ensure it's not too long and is valid
+	if len(sanitized) > 40 {
+		sanitized = sanitized[:40]
+	}
+	
+	return strings.ToLower(sanitized)
 }
 
