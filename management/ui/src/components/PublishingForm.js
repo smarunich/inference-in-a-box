@@ -164,9 +164,7 @@ const PublishingForm = ({ modelName, onComplete, onCancel }) => {
     try {
       setLoading(true);
       
-      // Include namespace parameter for all users
-      const namespace = formData.tenantId || user?.tenant;
-      await api.unpublishModel(modelName, namespace);
+      await api.unpublishModel(modelName);
       
       toast.success('Model unpublished successfully!');
       onComplete(null);
