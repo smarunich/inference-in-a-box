@@ -91,7 +91,7 @@ func (s *TestExecutionService) executeModelTest(req TestExecutionRequest, user *
 		}
 	} else {
 		// Use published model configuration
-		publishedModel, err := s.publishingService.getPublishedModel(req.ModelName, user.Tenant)
+		publishedModel, err := s.publishingService.GetPublishedModel(req.ModelName, user.Tenant)
 		if err != nil {
 			return TestExecutionResponse{
 				Success:    false,
