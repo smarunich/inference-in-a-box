@@ -128,6 +128,11 @@ func (s *PublishingService) PublishModel(c *gin.Context) {
 		modelType = detectedType
 	}
 
+	// Apply defaults if not provided
+	if req.Config.PublicHostname == "" {
+		req.Config.PublicHostname = "api.router.inference-in-a-box"
+	}
+
 	// Step 1: Generate API key
 	_, apiKey, err := s.generateAPIKey(u, modelName, namespace, modelType)
 	if err != nil {
@@ -173,18 +178,19 @@ func (s *PublishingService) PublishModel(c *gin.Context) {
 
 	// Step 5: Create published model response
 	publishedModel := PublishedModel{
-		ModelName:     modelName,
-		Namespace:     namespace,
-		TenantID:      namespace,
-		ModelType:     modelType,
-		ExternalURL:   externalURL,
-		APIKey:        apiKey,
-		RateLimiting:  req.Config.RateLimiting,
-		Status:        "active",
-		CreatedAt:     time.Now(),
-		UpdatedAt:     time.Now(),
-		Usage:         UsageStats{},
-		Documentation: documentation,
+		ModelName:      modelName,
+		Namespace:      namespace,
+		TenantID:       namespace,
+		ModelType:      modelType,
+		ExternalURL:    externalURL,
+		PublicHostname: req.Config.PublicHostname,
+		APIKey:         apiKey,
+		RateLimiting:   req.Config.RateLimiting,
+		Status:         "active",
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
+		Usage:          UsageStats{},
+		Documentation:  documentation,
 	}
 
 	// Step 6: Store published model metadata
@@ -206,6 +212,172 @@ func (s *PublishingService) PublishModel(c *gin.Context) {
 	c.JSON(http.StatusOK, PublishModelResponse{
 		Message:       "Model published successfully",
 		PublishedModel: publishedModel,
+	})
+}
+
+// UpdatePublishedModel handles PUT /api/models/:modelName/publish
+func (s *PublishingService) UpdatePublishedModel(c *gin.Context) {
+	modelName := c.Param("modelName")
+	
+	// Get user from JWT context
+	user, exists := c.Get("user")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, ErrorResponse{
+			Error: "Authentication required",
+		})
+		return
+	}
+
+	u, ok := user.(*User)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{
+			Error: "Invalid user context",
+		})
+		return
+	}
+
+	// Parse request body
+	var req PublishModelRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{
+			Error:   "Invalid request format",
+			Details: err.Error(),
+		})
+		return
+	}
+
+	// Determine namespace
+	namespace := u.Tenant
+	if u.IsAdmin && req.Config.TenantID != "" {
+		namespace = req.Config.TenantID
+	}
+
+	// Validate user permissions
+	if !u.IsAdmin && u.Tenant != namespace {
+		c.JSON(http.StatusForbidden, ErrorResponse{
+			Error: "Insufficient permissions for tenant: " + namespace,
+		})
+		return
+	}
+
+	// Check if model is published
+	if !s.isModelPublished(namespace, modelName) {
+		c.JSON(http.StatusNotFound, ErrorResponse{
+			Error: "Model is not published",
+		})
+		return
+	}
+
+	// Get current published model metadata
+	currentModel, err := s.getPublishedModelMetadata(namespace, modelName)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{
+			Error:   "Failed to get current published model",
+			Details: err.Error(),
+		})
+		return
+	}
+
+	// Create error reporter and rollback handler
+	errorReporter := NewErrorReporter(s)
+	rollback := NewPublishingRollback(s, namespace, modelName)
+
+	// Validate the update request
+	validator := NewPublishingValidator(s)
+	if validationErrors := validator.ValidateUpdateRequest(namespace, modelName, req.Config, currentModel); len(validationErrors) > 0 {
+		var errorMessages []string
+		for _, err := range validationErrors {
+			errorMessages = append(errorMessages, err.Error())
+		}
+		
+		c.JSON(http.StatusBadRequest, ErrorResponse{
+			Error:   "Validation failed",
+			Details: strings.Join(errorMessages, "; "),
+		})
+		return
+	}
+
+	// Apply defaults if not provided
+	if req.Config.PublicHostname == "" {
+		req.Config.PublicHostname = "api.router.inference-in-a-box"
+	}
+
+	// Update gateway configuration if hostname or path changed
+	if req.Config.PublicHostname != currentModel.PublicHostname || req.Config.ExternalPath != "" {
+		// First cleanup old gateway config
+		s.cleanupGatewayConfiguration(namespace, modelName)
+		rollback.AddStep("cleanup_old_gateway")
+
+		// Create new gateway configuration
+		externalURL, err := s.createGatewayConfiguration(namespace, modelName, currentModel.ModelType, req.Config)
+		if err != nil {
+			publishingErr := NewPublishingError(ErrGatewayConfigFailed, "Failed to update gateway configuration", namespace, modelName, "gateway_config_update", err)
+			errorReporter.ReportError(u, namespace, modelName, "update_gateway_config", publishingErr)
+			rollback.Execute()
+			c.JSON(http.StatusInternalServerError, ErrorResponse{
+				Error:   publishingErr.Message,
+				Details: publishingErr.Details,
+			})
+			return
+		}
+		currentModel.ExternalURL = externalURL
+		currentModel.PublicHostname = req.Config.PublicHostname
+		rollback.AddStep("gateway_config")
+	}
+
+	// Update rate limiting policy if changed
+	if req.Config.RateLimiting.RequestsPerMinute != currentModel.RateLimiting.RequestsPerMinute ||
+		req.Config.RateLimiting.RequestsPerHour != currentModel.RateLimiting.RequestsPerHour ||
+		req.Config.RateLimiting.TokensPerHour != currentModel.RateLimiting.TokensPerHour ||
+		req.Config.RateLimiting.BurstLimit != currentModel.RateLimiting.BurstLimit {
+		
+		// Cleanup old rate limiting policy
+		s.cleanupRateLimitingPolicy(namespace, modelName)
+		
+		// Create new rate limiting policy
+		if err := s.createRateLimitingPolicy(namespace, modelName, req.Config.RateLimiting); err != nil {
+			publishingErr := NewPublishingError(ErrRateLimitConfigFailed, "Failed to update rate limiting policy", namespace, modelName, "rate_limiting_update", err)
+			errorReporter.ReportError(u, namespace, modelName, "update_rate_limiting", publishingErr)
+			rollback.Execute()
+			c.JSON(http.StatusInternalServerError, ErrorResponse{
+				Error:   publishingErr.Message,
+				Details: publishingErr.Details,
+			})
+			return
+		}
+		currentModel.RateLimiting = req.Config.RateLimiting
+		rollback.AddStep("rate_limiting")
+	}
+
+	// Update metadata
+	currentModel.UpdatedAt = time.Now()
+	if req.Config.Metadata != nil {
+		// Update metadata - this is stored in the published model record
+		// For now, we'll just note that metadata was updated
+		currentModel.UpdatedAt = time.Now()
+	}
+
+	// Regenerate documentation with updated URL
+	currentModel.Documentation = s.generateAPIDocumentation(namespace, modelName, currentModel.ModelType, currentModel.ExternalURL, currentModel.APIKey)
+
+	// Store updated metadata
+	if err := s.storePublishedModelMetadata(namespace, modelName, *currentModel); err != nil {
+		publishingErr := NewPublishingError("METADATA_UPDATE_FAILED", "Failed to update published model metadata", namespace, modelName, "metadata_update", err)
+		errorReporter.ReportError(u, namespace, modelName, "update_metadata", publishingErr)
+		rollback.Execute()
+		c.JSON(http.StatusInternalServerError, ErrorResponse{
+			Error:   publishingErr.Message,
+			Details: publishingErr.Details,
+		})
+		return
+	}
+
+	// Log the update event
+	s.logPublishingEvent(u, modelName, namespace, "updated")
+
+	c.JSON(http.StatusOK, PublishModelResponse{
+		Message:        "Published model updated successfully",
+		PublishedModel: *currentModel,
 	})
 }
 
@@ -793,8 +965,12 @@ func (s *PublishingService) createHTTPRoute(namespace, modelName, routeName stri
 		return "", fmt.Errorf("failed to create HTTPRoute: %w", err)
 	}
 	
-	// Return the external URL
-	return fmt.Sprintf("https://gateway.example.com%s", externalPath), nil
+	// Return the external URL using the configured hostname
+	hostname := config.PublicHostname
+	if hostname == "" {
+		hostname = "api.router.inference-in-a-box"
+	}
+	return fmt.Sprintf("https://%s%s", hostname, externalPath), nil
 }
 
 func (s *PublishingService) createAIGatewayRoute(namespace, modelName, routeName string, config PublishConfig) (string, error) {
@@ -883,8 +1059,12 @@ func (s *PublishingService) createAIGatewayRoute(namespace, modelName, routeName
 		return "", fmt.Errorf("failed to create AIGatewayRoute: %w", err)
 	}
 	
-	// Return the external URL
-	return fmt.Sprintf("https://gateway.example.com%s", externalPath), nil
+	// Return the external URL using the configured hostname
+	hostname := config.PublicHostname
+	if hostname == "" {
+		hostname = "api.router.inference-in-a-box"
+	}
+	return fmt.Sprintf("https://%s%s", hostname, externalPath), nil
 }
 
 func (s *PublishingService) createRateLimitingPolicy(namespace, modelName string, rateLimiting RateLimitConfig) error {
@@ -982,18 +1162,19 @@ func (s *PublishingService) generateAPIDocumentation(namespace, modelName, model
 func (s *PublishingService) storePublishedModelMetadata(namespace, modelName string, model PublishedModel) error {
 	// Convert PublishedModel to map for storage
 	modelMap := map[string]interface{}{
-		"modelName":     model.ModelName,
-		"namespace":     model.Namespace,
-		"tenantId":      model.TenantID,
-		"modelType":     model.ModelType,
-		"externalUrl":   model.ExternalURL,
-		"apiKey":        model.APIKey,
-		"rateLimiting":  model.RateLimiting,
-		"status":        model.Status,
-		"createdAt":     model.CreatedAt,
-		"updatedAt":     model.UpdatedAt,
-		"usage":         model.Usage,
-		"documentation": model.Documentation,
+		"modelName":      model.ModelName,
+		"namespace":      model.Namespace,
+		"tenantId":       model.TenantID,
+		"modelType":      model.ModelType,
+		"externalUrl":    model.ExternalURL,
+		"publicHostname": model.PublicHostname,
+		"apiKey":         model.APIKey,
+		"rateLimiting":   model.RateLimiting,
+		"status":         model.Status,
+		"createdAt":      model.CreatedAt,
+		"updatedAt":      model.UpdatedAt,
+		"usage":          model.Usage,
+		"documentation":  model.Documentation,
 	}
 	
 	// Store the metadata using K8s client
@@ -1024,6 +1205,9 @@ func (s *PublishingService) getPublishedModelMetadata(namespace, modelName strin
 	}
 	if v, ok := metadata["externalUrl"].(string); ok {
 		model.ExternalURL = v
+	}
+	if v, ok := metadata["publicHostname"].(string); ok {
+		model.PublicHostname = v
 	}
 	if v, ok := metadata["apiKey"].(string); ok {
 		model.APIKey = v
@@ -1114,6 +1298,9 @@ func (s *PublishingService) convertMetadataToModel(metadata map[string]interface
 	}
 	if v, ok := metadata["externalUrl"].(string); ok {
 		model.ExternalURL = v
+	}
+	if v, ok := metadata["publicHostname"].(string); ok {
+		model.PublicHostname = v
 	}
 	if v, ok := metadata["apiKey"].(string); ok {
 		model.APIKey = v

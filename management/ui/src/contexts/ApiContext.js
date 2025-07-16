@@ -60,6 +60,7 @@ export const ApiProvider = ({ children }) => {
     
     // Model Publishing
     publishModel: (modelName, publishConfig) => api.post(`/models/${modelName}/publish`, publishConfig),
+    updatePublishedModel: (modelName, publishConfig) => api.put(`/models/${modelName}/publish`, publishConfig),
     unpublishModel: (modelName, namespace = null) => {
       const params = namespace ? { namespace } : {};
       return api.delete(`/models/${modelName}/publish`, { params });

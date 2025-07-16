@@ -9,6 +9,7 @@ const PublishingForm = ({ modelName, onComplete, onCancel }) => {
     tenantId: '',
     modelType: '', // Will be auto-detected
     externalPath: '',
+    publicHostname: 'api.router.inference-in-a-box',
     rateLimiting: {
       requestsPerMinute: 60,
       requestsPerHour: 3600,
@@ -94,6 +95,7 @@ const PublishingForm = ({ modelName, onComplete, onCancel }) => {
         tenantId: publishedModel.tenantID,
         modelType: publishedModel.modelType,
         externalPath: publishedModel.externalURL?.split('/').pop() || '',
+        publicHostname: publishedModel.publicHostname || 'api.router.inference-in-a-box',
         rateLimiting: publishedModel.rateLimiting || prev.rateLimiting,
         authentication: {
           requireApiKey: true, // Always true for existing published models
@@ -140,9 +142,11 @@ const PublishingForm = ({ modelName, onComplete, onCancel }) => {
         requestBody.config.tenantID = formData.tenantId;
       }
       
-      const response = await api.publishModel(modelName, requestBody);
+      const response = isPublished 
+        ? await api.updatePublishedModel(modelName, requestBody)
+        : await api.publishModel(modelName, requestBody);
       
-      toast.success('Model published successfully!');
+      toast.success(isPublished ? 'Model updated successfully!' : 'Model published successfully!');
       onComplete(response.data);
     } catch (error) {
       console.error('Error publishing model:', error);
@@ -290,6 +294,21 @@ const PublishingForm = ({ modelName, onComplete, onCancel }) => {
             />
             <div style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '0.25rem' }}>
               The URL path where the model will be accessible externally
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label>Public Hostname</label>
+            <input
+              type="text"
+              name="publicHostname"
+              value={formData.publicHostname}
+              onChange={handleInputChange}
+              className="form-control"
+              placeholder="api.router.inference-in-a-box"
+            />
+            <div style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '0.25rem' }}>
+              The hostname where the model will be accessible externally (e.g., api.router.inference-in-a-box)
             </div>
           </div>
         </div>

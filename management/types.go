@@ -293,6 +293,7 @@ type PublishConfig struct {
 	TenantID        string            `json:"tenantId" binding:"required"`
 	ModelType       string            `json:"modelType"` // "traditional" or "openai"
 	ExternalPath    string            `json:"externalPath"`
+	PublicHostname  string            `json:"publicHostname"` // Public hostname for model access
 	RateLimiting    RateLimitConfig   `json:"rateLimiting"`
 	Authentication  AuthConfig        `json:"authentication"`
 	Metadata        map[string]string `json:"metadata"`
@@ -319,6 +320,7 @@ type PublishedModel struct {
 	TenantID        string            `json:"tenantId"`
 	ModelType       string            `json:"modelType"`
 	ExternalURL     string            `json:"externalUrl"`
+	PublicHostname  string            `json:"publicHostname"`
 	APIKey          string            `json:"apiKey"`
 	RateLimiting    RateLimitConfig   `json:"rateLimiting"`
 	Status          string            `json:"status"`

@@ -186,6 +186,114 @@ func (v *PublishingValidator) ValidatePublishRequest(namespace, modelName string
 		}
 	}
 	
+	// Validate public hostname
+	if config.PublicHostname != "" {
+		// Basic hostname validation
+		if strings.Contains(config.PublicHostname, "://") {
+			errors = append(errors, ValidationError{
+				Field:   "publicHostname",
+				Value:   config.PublicHostname,
+				Message: "Public hostname should not include protocol (http/https)",
+			})
+		}
+		if strings.Contains(config.PublicHostname, "/") {
+			errors = append(errors, ValidationError{
+				Field:   "publicHostname",
+				Value:   config.PublicHostname,
+				Message: "Public hostname should not include path",
+			})
+		}
+	}
+	
+	// Validate authentication configuration
+	if !config.Authentication.RequireAPIKey {
+		errors = append(errors, ValidationError{
+			Field:   "authentication.requireApiKey",
+			Value:   config.Authentication.RequireAPIKey,
+			Message: "API key authentication is required",
+		})
+	}
+	
+	return errors
+}
+
+// ValidateUpdateRequest validates an update request
+func (v *PublishingValidator) ValidateUpdateRequest(namespace, modelName string, config PublishConfig, currentModel *PublishedModel) []ValidationError {
+	var errors []ValidationError
+	
+	// Validate tenant ID
+	if config.TenantID == "" {
+		errors = append(errors, ValidationError{
+			Field:   "tenantId",
+			Value:   config.TenantID,
+			Message: "Tenant ID is required",
+		})
+	}
+	
+	// Validate model type (should not change)
+	if config.ModelType != "" && config.ModelType != currentModel.ModelType {
+		errors = append(errors, ValidationError{
+			Field:   "modelType",
+			Value:   config.ModelType,
+			Message: "Model type cannot be changed after publishing",
+		})
+	}
+	
+	// Validate rate limiting configuration
+	if config.RateLimiting.RequestsPerMinute <= 0 {
+		errors = append(errors, ValidationError{
+			Field:   "rateLimiting.requestsPerMinute",
+			Value:   config.RateLimiting.RequestsPerMinute,
+			Message: "Requests per minute must be greater than 0",
+		})
+	}
+	
+	if config.RateLimiting.RequestsPerHour <= 0 {
+		errors = append(errors, ValidationError{
+			Field:   "rateLimiting.requestsPerHour",
+			Value:   config.RateLimiting.RequestsPerHour,
+			Message: "Requests per hour must be greater than 0",
+		})
+	}
+	
+	if config.RateLimiting.RequestsPerMinute > config.RateLimiting.RequestsPerHour {
+		errors = append(errors, ValidationError{
+			Field:   "rateLimiting",
+			Value:   nil,
+			Message: "Requests per minute cannot exceed requests per hour",
+		})
+	}
+	
+	// Validate external path
+	if config.ExternalPath != "" {
+		if !strings.HasPrefix(config.ExternalPath, "/") {
+			errors = append(errors, ValidationError{
+				Field:   "externalPath",
+				Value:   config.ExternalPath,
+				Message: "External path must start with '/'",
+			})
+		}
+	}
+	
+	// Validate public hostname
+	if config.PublicHostname != "" {
+		// Basic hostname validation
+		if strings.Contains(config.PublicHostname, "://") {
+			errors = append(errors, ValidationError{
+				Field:   "publicHostname",
+				Value:   config.PublicHostname,
+				Message: "Public hostname should not include protocol (http/https)",
+			})
+		}
+		if strings.Contains(config.PublicHostname, "/") {
+			errors = append(errors, ValidationError{
+				Field:   "publicHostname",
+				Value:   config.PublicHostname,
+				Message: "Public hostname should not include path",
+			})
+		}
+	}
+	
 	// Validate authentication configuration
 	if !config.Authentication.RequireAPIKey {
 		errors = append(errors, ValidationError{
