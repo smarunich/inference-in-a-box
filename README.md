@@ -240,6 +240,144 @@ graph TB
 - **SLA monitoring** with automated alerting
 - **Unified dashboards** for operational visibility
 
+## 🖥️ Management Service
+
+The **Management Service** is a comprehensive web-based platform for managing AI/ML model inference operations. It provides both a REST API and an intuitive React-based web interface for complete model lifecycle management.
+
+### 🎯 Key Features
+
+#### **Model Publishing & Management**
+- **One-click model publishing** with configurable external access
+- **Public hostname configuration** (default: `api.router.inference-in-a-box`)
+- **Update published models** - modify rate limits, paths, and hostnames
+- **Multi-tenant model isolation** with namespace-based security
+- **Automatic model type detection** (Traditional vs OpenAI-compatible)
+
+#### **Rate Limiting & Traffic Control**
+- **Per-model rate limiting** with configurable requests per minute/hour
+- **Token-based rate limiting** for OpenAI-compatible models
+- **Burst limit configuration** for handling traffic spikes
+- **Dynamic rate limit updates** without republishing models
+
+#### **External Access & Routing**
+- **Configurable public hostnames** for external model access
+- **Custom path routing** for model endpoints
+- **Automatic gateway configuration** (Envoy AI Gateway + Istio)
+- **SSL/TLS termination** with automatic certificate management
+
+#### **Security & Authentication**
+- **JWT-based authentication** with tenant isolation
+- **API key management** for external access
+- **API key rotation** with zero-downtime updates
+- **Admin and tenant-level permissions**
+
+### 🔧 Technical Architecture
+
+```mermaid
+graph TB
+    subgraph "Management Service Stack"
+        UI[React Frontend] --> API[Go Backend]
+        API --> K8S[Kubernetes API]
+        API --> GATEWAY[Gateway Configuration]
+        API --> STORAGE[Model Metadata]
+    end
+    
+    subgraph "Model Publishing Flow"
+        PUBLISH[Publish Model] --> VALIDATE[Validate Config]
+        VALIDATE --> GATEWAY_CONFIG[Create Gateway Routes]
+        GATEWAY_CONFIG --> RATE_LIMIT[Setup Rate Limiting]
+        RATE_LIMIT --> API_KEY[Generate API Key]
+        API_KEY --> DOCS[Generate Documentation]
+    end
+    
+    subgraph "External Access"
+        CLIENT[External Client] --> ENVOY[Envoy AI Gateway]
+        ENVOY --> ISTIO[Istio Gateway]
+        ISTIO --> KSERVE[KServe Model]
+    end
+```
+
+### 📋 API Endpoints
+
+#### **Model Management**
+- `GET /api/models` - List all models
+- `POST /api/models` - Create new model
+- `GET /api/models/{name}` - Get model details
+- `PUT /api/models/{name}` - Update model configuration
+- `DELETE /api/models/{name}` - Delete model
+
+#### **Model Publishing**
+- `POST /api/models/{name}/publish` - Publish model for external access
+- `PUT /api/models/{name}/publish` - Update published model configuration
+- `GET /api/models/{name}/publish` - Get published model details
+- `DELETE /api/models/{name}/publish` - Unpublish model
+- `GET /api/published-models` - List all published models
+
+#### **API Key Management**
+- `POST /api/models/{name}/publish/rotate-key` - Rotate API key
+- `POST /api/validate-api-key` - Validate API key (for gateway)
+
+#### **Admin Operations**
+- `GET /api/admin/system` - System information
+- `GET /api/admin/tenants` - Tenant management
+- `POST /api/admin/kubectl` - Execute kubectl commands
+
+### 🌐 Web Interface Access
+
+```bash
+# Access the Management Service UI
+kubectl port-forward svc/management-service 8085:80
+
+# Open in browser
+open http://localhost:8085
+```
+
+### 🔗 Publishing Workflow Example
+
+```bash
+# 1. Create a model
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "my-model", "framework": "sklearn", "storageUri": "s3://my-bucket/model"}' \
+  http://localhost:8085/api/models
+
+# 2. Publish model with custom hostname
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "config": {
+      "tenantId": "tenant-a",
+      "publicHostname": "api.router.inference-in-a-box",
+      "externalPath": "/models/my-model",
+      "rateLimiting": {
+        "requestsPerMinute": 100,
+        "requestsPerHour": 5000
+      }
+    }
+  }' \
+  http://localhost:8085/api/models/my-model/publish
+
+# 3. Update published model configuration
+curl -X PUT -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "config": {
+      "tenantId": "tenant-a",
+      "publicHostname": "api.router.inference-in-a-box",
+      "rateLimiting": {
+        "requestsPerMinute": 200,
+        "requestsPerHour": 10000
+      }
+    }
+  }' \
+  http://localhost:8085/api/models/my-model/publish
+
+# 4. Access published model externally
+curl -H "X-API-Key: $API_KEY" \
+  https://api.router.inference-in-a-box/models/my-model/predict \
+  -d '{"input": "sample data"}'
+```
+
 ## 🚀 Quick Start
 
 ### Prerequisites

@@ -51,6 +51,29 @@ cd management && go build             # Build Go binary
 cd management && go test ./...         # Run Go tests
 ```
 
+### Model Publishing & Management
+```bash
+# Access Management Service UI for model publishing
+kubectl port-forward svc/management-service 8085:80
+# Open browser: http://localhost:8085
+
+# Direct API access for model operations
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8085/api/models
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8085/api/published-models
+
+# Model publishing workflow via API
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"config": {"tenantId": "tenant-a", "publicHostname": "api.router.inference-in-a-box"}}' \
+  http://localhost:8085/api/models/my-model/publish
+
+# Update published model configuration
+curl -X PUT -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"config": {"tenantId": "tenant-a", "publicHostname": "api.router.inference-in-a-box", "rateLimiting": {"requestsPerMinute": 100}}}' \
+  http://localhost:8085/api/models/my-model/publish
+```
+
 ### Demo & Testing
 ```bash
 # Interactive demo with multiple scenarios
@@ -108,6 +131,9 @@ This platform implements a **dual-gateway architecture** where external traffic 
 - **KServe**: Kubernetes-native serverless model serving with auto-scaling
 - **Knative**: Serverless framework enabling scale-to-zero capabilities
 - **Management Service**: Go backend with embedded React frontend for platform administration
+  - **Model Publishing**: Full-featured model publishing and management system
+  - **Public Hostname Configuration**: Configurable external access via `api.router.inference-in-a-box`
+  - **Rate Limiting**: Per-model rate limiting with configurable limits
 
 ### Multi-Tenant Architecture
 - **Tenant Namespaces**: `tenant-a`, `tenant-b`, `tenant-c` with complete resource isolation
@@ -142,6 +168,10 @@ This platform implements a **dual-gateway architecture** where external traffic 
 - `management/Dockerfile` - Container image build configuration
 - `management/go.mod` - Go module dependencies and version constraints
 - `management/package.json` - NPM scripts for React UI development
+- `management/publishing.go` - Model publishing and management service
+- `management/types.go` - Type definitions including PublishConfig and PublishedModel
+- `management/ui/src/components/PublishingForm.js` - React component for model publishing
+- `management/ui/src/components/PublishingList.js` - React component for managing published models
 
 ### Examples & Documentation
 - `examples/serverless/` - Serverless configuration examples and templates

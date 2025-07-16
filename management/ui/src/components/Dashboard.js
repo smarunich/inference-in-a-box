@@ -5,6 +5,7 @@ import ModelForm from './ModelForm';
 import InferenceTest from './InferenceTest';
 import AdminDashboard from './AdminDashboard';
 import PublishingDashboard from './PublishingDashboard';
+import DeveloperConsole from './DeveloperConsole';
 import { LogOut } from 'lucide-react';
 
 const Dashboard = () => {
@@ -27,6 +28,7 @@ const Dashboard = () => {
     { id: 'create', label: 'Deploy Models', component: ModelForm, description: 'Deploy new models to your tenant' },
     { id: 'inference', label: 'Test Inference', component: InferenceTest, description: 'Test model predictions' },
     { id: 'publishing', label: 'Model Publishing', component: PublishingDashboard, description: 'Publish models to external APIs' },
+    { id: 'developer', label: 'Developer Console', component: DeveloperConsole, description: 'Test published models with external API calls' },
   ];
 
   const tabs = mlopsTabs;

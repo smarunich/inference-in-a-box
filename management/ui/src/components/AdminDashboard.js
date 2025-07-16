@@ -8,7 +8,8 @@ import AdminLogs from './AdminLogs';
 import AdminResources from './AdminResources';
 import AdminKubectl from './AdminKubectl';
 import PublishingDashboard from './PublishingDashboard';
-import { LogOut, Shield, Database, Activity, Terminal, FileText, Settings, Users, Globe } from 'lucide-react';
+import DeveloperConsole from './DeveloperConsole';
+import { LogOut, Shield, Database, Activity, Terminal, FileText, Settings, Users, Globe, Code } from 'lucide-react';
 
 const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState('models');
@@ -25,6 +26,7 @@ const AdminDashboard = () => {
 
   // Developer Concerns: API access, usage monitoring, and application debugging
   const developerTabs = [
+    { id: 'developer', label: 'Developer Console', icon: Code, component: DeveloperConsole, description: 'Test published models with external API calls and view code examples' },
     { id: 'logs', label: 'Application Logs', icon: FileText, component: AdminLogs, description: 'View application logs and debugging information for model services' },
   ];
 
