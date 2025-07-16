@@ -890,6 +890,12 @@ func (s *PublishingService) createHTTPRoute(namespace, modelName, routeName stri
 		externalPath = fmt.Sprintf("/published/models/%s", modelName)
 	}
 	
+	// Determine hostname
+	hostname := config.PublicHostname
+	if hostname == "" {
+		hostname = "api.router.inference-in-a-box"
+	}
+	
 	// Create HTTPRoute configuration
 	httpRoute := map[string]interface{}{
 		"apiVersion": "gateway.networking.k8s.io/v1",
@@ -901,9 +907,11 @@ func (s *PublishingService) createHTTPRoute(namespace, modelName, routeName stri
 				"app":        "published-model",
 				"model-name": modelName,
 				"tenant":     namespace,
+				"hostname":   hostname,
 			},
 		},
 		"spec": map[string]interface{}{
+			"hostnames": []interface{}{hostname}, // Add hostname specification
 			"parentRefs": []interface{}{
 				map[string]interface{}{
 					"name":      "ai-inference-gateway",
@@ -944,6 +952,10 @@ func (s *PublishingService) createHTTPRoute(namespace, modelName, routeName stri
 										"name":  "x-gateway",
 										"value": "published-model",
 									},
+									map[string]interface{}{
+										"name":  "x-hostname",
+										"value": hostname,
+									},
 								},
 							},
 						},
@@ -960,16 +972,17 @@ func (s *PublishingService) createHTTPRoute(namespace, modelName, routeName stri
 		},
 	}
 	
+	// Update Gateway to include this hostname
+	if err := s.updateGatewayForHostname(hostname); err != nil {
+		return "", fmt.Errorf("failed to update gateway for hostname %s: %w", hostname, err)
+	}
+	
 	// Create the HTTPRoute
 	if err := s.k8sClient.CreateHTTPRoute("envoy-gateway-system", httpRoute); err != nil {
 		return "", fmt.Errorf("failed to create HTTPRoute: %w", err)
 	}
 	
 	// Return the external URL using the configured hostname
-	hostname := config.PublicHostname
-	if hostname == "" {
-		hostname = "api.router.inference-in-a-box"
-	}
 	return fmt.Sprintf("https://%s%s", hostname, externalPath), nil
 }
 
@@ -1581,5 +1594,71 @@ func (s *PublishingService) createReferenceGrant(namespace, modelName string) er
 	}
 
 	return s.k8sClient.CreateReferenceGrant(namespace, referenceGrant)
+}
+
+// updateGatewayForHostname updates the Gateway resource to include a new hostname
+func (s *PublishingService) updateGatewayForHostname(hostname string) error {
+	gatewayNamespace := "envoy-gateway-system"
+	gatewayName := "ai-inference-gateway"
+	
+	// Get the current Gateway configuration
+	gateway, err := s.k8sClient.GetGateway(gatewayNamespace, gatewayName)
+	if err != nil {
+		return fmt.Errorf("failed to get gateway %s/%s: %w", gatewayNamespace, gatewayName, err)
+	}
+	
+	// Extract the spec
+	spec, ok := gateway["spec"].(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("gateway spec is not a map")
+	}
+	
+	// Extract listeners
+	listeners, ok := spec["listeners"].([]interface{})
+	if !ok {
+		return fmt.Errorf("gateway listeners is not an array")
+	}
+	
+	// Track if hostname already exists
+	hostnameExists := false
+	
+	// Check if hostname already exists in any listener
+	for _, listener := range listeners {
+		if l, ok := listener.(map[string]interface{}); ok {
+			if existingHostname, exists := l["hostname"]; exists {
+				if existingHostname == hostname {
+					hostnameExists = true
+					break
+				}
+			}
+		}
+	}
+	
+	// If hostname doesn't exist, add it to the HTTPS listener
+	if !hostnameExists {
+		for i, listener := range listeners {
+			if l, ok := listener.(map[string]interface{}); ok {
+				if name, exists := l["name"]; exists && name == "https" {
+					// For now, we'll replace the hostname rather than adding multiple
+					// In a production system, you might want to support multiple hostnames
+					l["hostname"] = hostname
+					listeners[i] = l
+					break
+				}
+			}
+		}
+		
+		// Update the listeners in the spec
+		spec["listeners"] = listeners
+		
+		// Update the Gateway resource
+		if err := s.k8sClient.UpdateGateway(gatewayNamespace, gateway); err != nil {
+			return fmt.Errorf("failed to update gateway: %w", err)
+		}
+		
+		log.Printf("Updated Gateway %s/%s to include hostname: %s", gatewayNamespace, gatewayName, hostname)
+	}
+	
+	return nil
 }
 

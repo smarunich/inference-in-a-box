@@ -334,15 +334,30 @@ open http://localhost:8085
 
 ### 🔗 Publishing Workflow Example
 
+#### Admin Authentication & Setup
+
+```bash
+# Admin login and get JWT token
+export ADMIN_TOKEN=$(curl -s -X POST -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "password"}' \
+  http://localhost:8085/api/admin/login | jq -r '.token')
+
+# Verify login
+curl -H "Authorization: Bearer $ADMIN_TOKEN" \
+  http://localhost:8085/api/admin/system
+```
+
+#### Model Publishing Workflow
+
 ```bash
 # 1. Create a model
-curl -X POST -H "Authorization: Bearer $TOKEN" \
+curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"name": "my-model", "framework": "sklearn", "storageUri": "s3://my-bucket/model"}' \
   http://localhost:8085/api/models
 
 # 2. Publish model with custom hostname
-curl -X POST -H "Authorization: Bearer $TOKEN" \
+curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "config": {
@@ -358,7 +373,7 @@ curl -X POST -H "Authorization: Bearer $TOKEN" \
   http://localhost:8085/api/models/my-model/publish
 
 # 3. Update published model configuration
-curl -X PUT -H "Authorization: Bearer $TOKEN" \
+curl -X PUT -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "config": {
@@ -377,6 +392,23 @@ curl -H "X-API-Key: $API_KEY" \
   https://api.router.inference-in-a-box/models/my-model/predict \
   -d '{"input": "sample data"}'
 ```
+
+#### Complete Admin API Demo
+
+For a comprehensive example of all admin API operations, use the provided script:
+
+```bash
+# Run the complete admin API demo
+./scripts/admin-api-example.sh
+```
+
+This script demonstrates:
+- Admin authentication
+- System information retrieval
+- Model and tenant management
+- Model publishing workflow
+- External API testing
+- kubectl command execution
 
 ## 🚀 Quick Start
 

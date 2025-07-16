@@ -57,21 +57,34 @@ cd management && go test ./...         # Run Go tests
 kubectl port-forward svc/management-service 8085:80
 # Open browser: http://localhost:8085
 
+# Admin login via curl (get JWT token for API access)
+export ADMIN_TOKEN=$(curl -s -X POST -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "password"}' \
+  http://localhost:8085/api/admin/login | jq -r '.token')
+
 # Direct API access for model operations
-curl -H "Authorization: Bearer $TOKEN" http://localhost:8085/api/models
-curl -H "Authorization: Bearer $TOKEN" http://localhost:8085/api/published-models
+curl -H "Authorization: Bearer $ADMIN_TOKEN" http://localhost:8085/api/models
+curl -H "Authorization: Bearer $ADMIN_TOKEN" http://localhost:8085/api/published-models
 
 # Model publishing workflow via API
-curl -X POST -H "Authorization: Bearer $TOKEN" \
+curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"config": {"tenantId": "tenant-a", "publicHostname": "api.router.inference-in-a-box"}}' \
   http://localhost:8085/api/models/my-model/publish
 
 # Update published model configuration
-curl -X PUT -H "Authorization: Bearer $TOKEN" \
+curl -X PUT -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"config": {"tenantId": "tenant-a", "publicHostname": "api.router.inference-in-a-box", "rateLimiting": {"requestsPerMinute": 100}}}' \
   http://localhost:8085/api/models/my-model/publish
+
+# Admin operations
+curl -H "Authorization: Bearer $ADMIN_TOKEN" http://localhost:8085/api/admin/system
+curl -H "Authorization: Bearer $ADMIN_TOKEN" http://localhost:8085/api/admin/tenants
+curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"command": "get pods --all-namespaces"}' \
+  http://localhost:8085/api/admin/kubectl
 ```
 
 ### Demo & Testing

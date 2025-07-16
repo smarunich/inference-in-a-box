@@ -20,11 +20,114 @@ Authorization: Bearer <jwt-token>
 
 Admin users can access additional endpoints and perform cross-tenant operations.
 
+#### Admin Login
+
+**POST** `/api/admin/login`
+
+Authenticate as an admin user and receive a JWT token.
+
+**Request:**
 ```bash
-# Admin login
 curl -X POST -H "Content-Type: application/json" \
   -d '{"username": "admin", "password": "password"}' \
   http://localhost:8085/api/admin/login
+```
+
+**Request Body:**
+```json
+{
+  "username": "admin",
+  "password": "password"
+}
+```
+
+**Response:**
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "user": {
+    "tenant": "admin",
+    "name": "Administrator",
+    "subject": "admin",
+    "issuer": "management-service",
+    "isAdmin": true,
+    "exp": 1701234567
+  }
+}
+```
+
+#### Using the Admin Token
+
+Once you have the admin token, include it in all subsequent requests:
+
+```bash
+# Store the token in an environment variable
+export ADMIN_TOKEN=$(curl -X POST -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "password"}' \
+  http://localhost:8085/api/admin/login | jq -r '.token')
+
+# Use the token in API requests
+curl -H "Authorization: Bearer $ADMIN_TOKEN" \
+  http://localhost:8085/api/admin/system
+```
+
+#### Complete Admin Workflow Example
+
+```bash
+#!/bin/bash
+
+# 1. Admin login and get token
+echo "Logging in as admin..."
+ADMIN_TOKEN=$(curl -s -X POST -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "password"}' \
+  http://localhost:8085/api/admin/login | jq -r '.token')
+
+if [ "$ADMIN_TOKEN" = "null" ] || [ -z "$ADMIN_TOKEN" ]; then
+  echo "Login failed"
+  exit 1
+fi
+
+echo "Login successful, token: ${ADMIN_TOKEN:0:20}..."
+
+# 2. Get system information
+echo "Getting system information..."
+curl -s -H "Authorization: Bearer $ADMIN_TOKEN" \
+  http://localhost:8085/api/admin/system | jq .
+
+# 3. List all tenants
+echo "Listing tenants..."
+curl -s -H "Authorization: Bearer $ADMIN_TOKEN" \
+  http://localhost:8085/api/admin/tenants | jq .
+
+# 4. List all models across tenants
+echo "Listing all models..."
+curl -s -H "Authorization: Bearer $ADMIN_TOKEN" \
+  http://localhost:8085/api/models | jq .
+
+# 5. List all published models
+echo "Listing published models..."
+curl -s -H "Authorization: Bearer $ADMIN_TOKEN" \
+  http://localhost:8085/api/published-models | jq .
+
+# 6. Execute kubectl command
+echo "Checking pod status..."
+curl -s -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"command": "get pods --all-namespaces"}' \
+  http://localhost:8085/api/admin/kubectl | jq -r '.result'
+```
+
+### Regular User Authentication
+
+Regular users authenticate through the platform's JWT system. The management service validates JWT tokens from the main authentication system.
+
+```bash
+# Get user token (method depends on your auth setup)
+export USER_TOKEN="your-user-jwt-token"
+
+# Use token for user operations
+curl -H "Authorization: Bearer $USER_TOKEN" \
+  http://localhost:8085/api/models
 ```
 
 ## Model Management API

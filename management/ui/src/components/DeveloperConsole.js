@@ -26,6 +26,15 @@ const DeveloperConsole = () => {
   const [testLoading, setTestLoading] = useState(false);
   const [testHistory, setTestHistory] = useState([]);
   const [activeTab, setActiveTab] = useState('test');
+  
+  // Advanced customization state
+  const [customEndpoint, setCustomEndpoint] = useState('');
+  const [customHeaders, setCustomHeaders] = useState([{ key: 'Content-Type', value: 'application/json' }]);
+  const [customMethod, setCustomMethod] = useState('POST');
+  const [useCustomConfig, setUseCustomConfig] = useState(false);
+  const [requestPresets, setRequestPresets] = useState([]);
+  const [selectedPreset, setSelectedPreset] = useState('');
+  
   const api = useApi();
   const { user } = useAuth();
 
@@ -42,6 +51,7 @@ const DeveloperConsole = () => {
       if (models.length > 0 && !selectedModel) {
         setSelectedModel(models[0]);
         generateSampleRequest(models[0]);
+        initializeRequestPresets();
       }
     } catch (error) {
       toast.error('Failed to fetch published models');
@@ -75,12 +85,103 @@ const DeveloperConsole = () => {
     setTestRequest(JSON.stringify(sampleData, null, 2));
   };
 
+  const initializeRequestPresets = () => {
+    if (!selectedModel) return;
+    
+    const presets = selectedModel.modelType === 'openai' ? [
+      {
+        name: 'Simple Chat',
+        description: 'Basic chat completion',
+        data: {
+          model: selectedModel.modelName,
+          messages: [{ role: "user", content: "Hello!" }],
+          max_tokens: 100,
+          temperature: 0.7
+        }
+      },
+      {
+        name: 'System Prompt',
+        description: 'Chat with system instructions',
+        data: {
+          model: selectedModel.modelName,
+          messages: [
+            { role: "system", content: "You are a helpful assistant." },
+            { role: "user", content: "Explain quantum computing in simple terms." }
+          ],
+          max_tokens: 200,
+          temperature: 0.3
+        }
+      },
+      {
+        name: 'Creative Writing',
+        description: 'High temperature for creative tasks',
+        data: {
+          model: selectedModel.modelName,
+          messages: [{ role: "user", content: "Write a short story about a robot learning to paint." }],
+          max_tokens: 300,
+          temperature: 0.9
+        }
+      }
+    ] : [
+      {
+        name: 'Single Instance',
+        description: 'Basic single prediction',
+        data: {
+          instances: [{ feature1: 1.0, feature2: 2.0, feature3: 0.5 }]
+        }
+      },
+      {
+        name: 'Batch Prediction',
+        description: 'Multiple instances',
+        data: {
+          instances: [
+            { feature1: 1.0, feature2: 2.0, feature3: 0.5 },
+            { feature1: 2.0, feature2: 1.0, feature3: 1.0 },
+            { feature1: 0.5, feature2: 3.0, feature3: 0.8 }
+          ]
+        }
+      }
+    ];
+    
+    setRequestPresets(presets);
+  };
+
+  const loadPreset = (presetName) => {
+    const preset = requestPresets.find(p => p.name === presetName);
+    if (preset) {
+      setTestRequest(JSON.stringify(preset.data, null, 2));
+      setSelectedPreset(presetName);
+    }
+  };
+
+  const addCustomHeader = () => {
+    setCustomHeaders([...customHeaders, { key: '', value: '' }]);
+  };
+
+  const removeCustomHeader = (index) => {
+    setCustomHeaders(customHeaders.filter((_, i) => i !== index));
+  };
+
+  const updateCustomHeader = (index, field, value) => {
+    const updated = [...customHeaders];
+    updated[index][field] = value;
+    setCustomHeaders(updated);
+  };
+
+  const resetCustomization = () => {
+    setCustomEndpoint('');
+    setCustomHeaders([{ key: 'Content-Type', value: 'application/json' }]);
+    setCustomMethod('POST');
+    setUseCustomConfig(false);
+  };
+
   const handleModelChange = (modelName) => {
     const model = publishedModels.find(m => m.modelName === modelName);
     if (model) {
       setSelectedModel(model);
       generateSampleRequest(model);
       setTestResponse(null);
+      initializeRequestPresets();
     }
   };
 
@@ -96,16 +197,31 @@ const DeveloperConsole = () => {
     try {
       const requestData = JSON.parse(testRequest);
       
-      const endpoint = selectedModel.modelType === 'openai' 
-        ? `${selectedModel.externalURL}/chat/completions`
-        : `${selectedModel.externalURL}/predict`;
+      // Use custom configuration if enabled
+      const endpoint = useCustomConfig && customEndpoint 
+        ? customEndpoint
+        : selectedModel.modelType === 'openai' 
+          ? `${selectedModel.externalURL}/chat/completions`
+          : `${selectedModel.externalURL}/predict`;
+
+      // Build headers from custom configuration or defaults
+      const headers = useCustomConfig 
+        ? customHeaders.reduce((acc, header) => {
+            if (header.key && header.value) {
+              acc[header.key] = header.value;
+            }
+            return acc;
+          }, {})
+        : {
+            'Content-Type': 'application/json',
+            'X-API-Key': selectedModel.apiKey
+          };
+
+      const method = useCustomConfig ? customMethod : 'POST';
 
       const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-API-Key': selectedModel.apiKey
-        },
+        method: method,
+        headers: headers,
         body: JSON.stringify(requestData)
       });
 
@@ -164,22 +280,43 @@ const DeveloperConsole = () => {
   const generateCurlCommand = () => {
     if (!selectedModel || !testRequest.trim()) return '';
 
-    const endpoint = selectedModel.modelType === 'openai' 
-      ? `${selectedModel.externalURL}/chat/completions`
-      : `${selectedModel.externalURL}/predict`;
+    const endpoint = useCustomConfig && customEndpoint 
+      ? customEndpoint
+      : selectedModel.modelType === 'openai' 
+        ? `${selectedModel.externalURL}/chat/completions`
+        : `${selectedModel.externalURL}/predict`;
 
-    return `curl -X POST "${endpoint}" \\
-  -H "Content-Type: application/json" \\
-  -H "X-API-Key: ${selectedModel.apiKey}" \\
-  -d '${testRequest.replace(/'/g, "\\'")}'`;
+    const method = useCustomConfig ? customMethod : 'POST';
+    
+    const headers = useCustomConfig 
+      ? customHeaders.filter(h => h.key && h.value).map(h => `  -H "${h.key}: ${h.value}"`).join(' \\\\\n')
+      : `  -H "Content-Type: application/json" \\\\\n  -H "X-API-Key: ${selectedModel.apiKey}"`;
+
+    return `curl -X ${method} "${endpoint}" \\\\\n${headers} \\\\\n  -d '${testRequest.replace(/'/g, "\\'")}'`;
   };
 
   const generatePythonCode = () => {
     if (!selectedModel || !testRequest.trim()) return '';
 
-    const endpoint = selectedModel.modelType === 'openai' 
-      ? `${selectedModel.externalURL}/chat/completions`
-      : `${selectedModel.externalURL}/predict`;
+    const endpoint = useCustomConfig && customEndpoint 
+      ? customEndpoint
+      : selectedModel.modelType === 'openai' 
+        ? `${selectedModel.externalURL}/chat/completions`
+        : `${selectedModel.externalURL}/predict`;
+
+    const method = useCustomConfig ? customMethod.toLowerCase() : 'post';
+    
+    const headers = useCustomConfig 
+      ? customHeaders.filter(h => h.key && h.value).reduce((acc, h) => {
+          acc[h.key] = h.value;
+          return acc;
+        }, {})
+      : {
+          "Content-Type": "application/json",
+          "X-API-Key": selectedModel.apiKey
+        };
+
+    const headersStr = JSON.stringify(headers, null, 4);
 
     return `import requests
 import json
@@ -188,16 +325,13 @@ import json
 url = "${endpoint}"
 
 # Headers
-headers = {
-    "Content-Type": "application/json",
-    "X-API-Key": "${selectedModel.apiKey}"
-}
+headers = ${headersStr}
 
 # Request data
 data = ${testRequest}
 
 # Make request
-response = requests.post(url, headers=headers, json=data)
+response = requests.${method}(url, headers=headers, json=data)
 
 # Check response
 if response.status_code == 200:
@@ -210,25 +344,38 @@ else:
   const generateJavaScriptCode = () => {
     if (!selectedModel || !testRequest.trim()) return '';
 
-    const endpoint = selectedModel.modelType === 'openai' 
-      ? `${selectedModel.externalURL}/chat/completions`
-      : `${selectedModel.externalURL}/predict`;
+    const endpoint = useCustomConfig && customEndpoint 
+      ? customEndpoint
+      : selectedModel.modelType === 'openai' 
+        ? `${selectedModel.externalURL}/chat/completions`
+        : `${selectedModel.externalURL}/predict`;
+
+    const method = useCustomConfig ? customMethod : 'POST';
+    
+    const headers = useCustomConfig 
+      ? customHeaders.filter(h => h.key && h.value).reduce((acc, h) => {
+          acc[h.key] = h.value;
+          return acc;
+        }, {})
+      : {
+          "Content-Type": "application/json",
+          "X-API-Key": selectedModel.apiKey
+        };
+
+    const headersStr = JSON.stringify(headers, null, 4);
 
     return `// Model endpoint
 const url = "${endpoint}";
 
 // Headers
-const headers = {
-    "Content-Type": "application/json",
-    "X-API-Key": "${selectedModel.apiKey}"
-};
+const headers = ${headersStr};
 
 // Request data
 const data = ${testRequest};
 
 // Make request
 fetch(url, {
-    method: 'POST',
+    method: '${method}',
     headers: headers,
     body: JSON.stringify(data)
 })
@@ -384,19 +531,153 @@ fetch(url, {
 
           {/* Test Tab */}
           {activeTab === 'test' && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
-              {/* Request Panel */}
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
-                  <h4 style={{ margin: 0 }}>Request</h4>
-                  <button
-                    onClick={() => generateSampleRequest(selectedModel)}
-                    className="btn btn-secondary btn-sm"
-                    title="Generate sample request"
-                  >
-                    <RefreshCw size={14} />
-                  </button>
+            <div>
+              {/* Request Presets */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <h4 style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Settings size={18} />
+                  Request Presets
+                </h4>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1rem' }}>
+                  {requestPresets.map((preset, index) => (
+                    <button
+                      key={index}
+                      onClick={() => loadPreset(preset.name)}
+                      className={`btn btn-sm ${selectedPreset === preset.name ? 'btn-primary' : 'btn-secondary'}`}
+                      title={preset.description}
+                    >
+                      {preset.name}
+                    </button>
+                  ))}
                 </div>
+              </div>
+
+              {/* Advanced Customization */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                  <h4 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <Settings size={18} />
+                    Advanced Configuration
+                  </h4>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem' }}>
+                      <input
+                        type="checkbox"
+                        checked={useCustomConfig}
+                        onChange={(e) => setUseCustomConfig(e.target.checked)}
+                      />
+                      Use Custom Config
+                    </label>
+                    {useCustomConfig && (
+                      <button
+                        onClick={resetCustomization}
+                        className="btn btn-secondary btn-sm"
+                        title="Reset to defaults"
+                      >
+                        <RefreshCw size={14} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {useCustomConfig && (
+                  <div style={{ 
+                    border: '1px solid #e2e8f0', 
+                    borderRadius: '4px', 
+                    padding: '1rem',
+                    backgroundColor: '#f8fafc',
+                    marginBottom: '1rem'
+                  }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: '500' }}>
+                          HTTP Method
+                        </label>
+                        <select
+                          value={customMethod}
+                          onChange={(e) => setCustomMethod(e.target.value)}
+                          className="form-control"
+                        >
+                          <option value="GET">GET</option>
+                          <option value="POST">POST</option>
+                          <option value="PUT">PUT</option>
+                          <option value="PATCH">PATCH</option>
+                          <option value="DELETE">DELETE</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: '500' }}>
+                          Custom Endpoint
+                        </label>
+                        <input
+                          type="text"
+                          value={customEndpoint}
+                          onChange={(e) => setCustomEndpoint(e.target.value)}
+                          placeholder={selectedModel.externalURL}
+                          className="form-control"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                        <label style={{ fontSize: '0.875rem', fontWeight: '500' }}>Custom Headers</label>
+                        <button
+                          onClick={addCustomHeader}
+                          className="btn btn-secondary btn-sm"
+                          title="Add header"
+                        >
+                          + Add Header
+                        </button>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        {customHeaders.map((header, index) => (
+                          <div key={index} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                            <input
+                              type="text"
+                              value={header.key}
+                              onChange={(e) => updateCustomHeader(index, 'key', e.target.value)}
+                              placeholder="Header name"
+                              className="form-control"
+                              style={{ flex: 1 }}
+                            />
+                            <input
+                              type="text"
+                              value={header.value}
+                              onChange={(e) => updateCustomHeader(index, 'value', e.target.value)}
+                              placeholder="Header value"
+                              className="form-control"
+                              style={{ flex: 1 }}
+                            />
+                            <button
+                              onClick={() => removeCustomHeader(index)}
+                              className="btn btn-secondary btn-sm"
+                              title="Remove header"
+                              disabled={customHeaders.length === 1}
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+                {/* Request Panel */}
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                    <h4 style={{ margin: 0 }}>Request</h4>
+                    <button
+                      onClick={() => generateSampleRequest(selectedModel)}
+                      className="btn btn-secondary btn-sm"
+                      title="Generate sample request"
+                    >
+                      <RefreshCw size={14} />
+                    </button>
+                  </div>
                 <textarea
                   value={testRequest}
                   onChange={(e) => setTestRequest(e.target.value)}
@@ -494,6 +775,7 @@ fetch(url, {
                   </div>
                 )}
               </div>
+            </div>
             </div>
           )}
 
