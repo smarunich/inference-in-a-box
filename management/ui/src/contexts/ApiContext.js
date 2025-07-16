@@ -62,8 +62,7 @@ export const ApiProvider = ({ children }) => {
     publishModel: (modelName, publishConfig) => api.post(`/models/${modelName}/publish`, publishConfig),
     updatePublishedModel: (modelName, publishConfig) => api.put(`/models/${modelName}/publish`, publishConfig),
     unpublishModel: (modelName, namespace = null) => {
-      const params = namespace ? { namespace } : {};
-      return api.delete(`/models/${modelName}/publish`, { params });
+      return api.delete(`/models/${modelName}/publish`);
     },
     getPublishedModel: (modelName, namespace = null) => {
       const params = namespace ? { namespace } : {};
