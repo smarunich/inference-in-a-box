@@ -1,0 +1,317 @@
+name: Main CI - Bootstrap & Platform Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  test-platform:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60  # Extended timeout for Knative/KServe installation
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Free up disk space
+      run: |
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /usr/local/lib/android
+        sudo rm -rf /opt/ghc
+        sudo rm -rf /opt/hostedtoolcache/CodeQL
+        sudo docker image prune --all --force
+        df -h
+        
+    - name: Setup prerequisites
+      run: |
+        # Install kubectl
+        curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+        chmod +x kubectl
+        sudo mv kubectl /usr/local/bin/
+        
+        # Install kind
+        curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
+        chmod +x ./kind
+        sudo mv ./kind /usr/local/bin/
+        
+        # Install helm
+        curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+        
+        # Install jq (should already be available)
+        sudo apt-get update
+        sudo apt-get install -y jq
+        
+        # Verify installations
+        echo "Tool versions:"
+        kubectl version --client
+        kind version
+        helm version
+        jq --version
+        docker --version
+        
+    - name: Bootstrap platform
+      run: |
+        echo "🚀 Starting platform bootstrap..."
+        chmod +x scripts/bootstrap.sh
+        
+        # Set CI environment variables for bootstrap script
+        export CI=true
+        export GITHUB_ACTIONS=true
+        
+        # Show system resources before bootstrap
+        echo "💻 System resources before bootstrap:"
+        df -h
+        free -h
+        docker system df
+        
+        # Run bootstrap with enhanced logging
+        ./scripts/bootstrap.sh
+        
+        # Show system resources after bootstrap
+        echo "💻 System resources after bootstrap:"
+        df -h
+        free -h
+        docker system df
+        
+    - name: Wait for platform readiness
+      run: |
+        echo "⏳ Waiting for platform to be fully ready..."
+        
+        # Show cluster resources before waiting
+        echo "🔍 Cluster status before waiting:"
+        kubectl get nodes
+        kubectl get pods --all-namespaces --field-selector=status.phase!=Running,status.phase!=Succeeded
+        
+        # Wait for all pods to be ready with extended timeout
+        echo "⏳ Waiting for all pods to be ready..."
+        if ! kubectl wait --for=condition=Ready pods --all --all-namespaces --timeout=900s; then
+          echo "❌ Some pods failed to become ready, showing status:"
+          kubectl get pods --all-namespaces --field-selector=status.phase!=Running,status.phase!=Succeeded
+          kubectl describe pods --all-namespaces --field-selector=status.phase!=Running,status.phase!=Succeeded
+          exit 1
+        fi
+        
+        # Check inference services
+        echo "📊 Checking inference services..."
+        kubectl get inferenceservice --all-namespaces || echo "No inference services found"
+        
+        # Check gateway resources
+        echo "🚪 Checking gateway resources..."
+        kubectl get gateway,aigatewayroute,aiservicebackend -n envoy-gateway-system || echo "No gateway resources found"
+        
+        # Check JWT server
+        echo "🔐 Checking JWT server..."
+        kubectl get pods -n default -l app=jwt-server || echo "JWT server not found"
+        
+        # Show overall cluster status
+        echo "🏥 Cluster health check:"
+        if kubectl get pods --all-namespaces | grep -E "(Error|CrashLoopBackOff|Pending)"; then
+          echo "❌ Found unhealthy pods"
+          exit 1
+        else
+          echo "✅ All pods healthy"
+        fi
+        
+    - name: Test JWT token generation
+      run: |
+        echo "🔑 Testing JWT token generation..."
+        chmod +x scripts/get-jwt-tokens.sh
+        ./scripts/get-jwt-tokens.sh
+        
+        # Verify tokens are valid JSON
+        ./scripts/get-jwt-tokens.sh | jq '.tokens | length' > /dev/null || exit 1
+        echo "✅ JWT tokens generated successfully"
+        
+    - name: Test demo scenarios
+      run: |
+        echo "🎭 Running demo scenarios..."
+        chmod +x scripts/demo.sh
+        
+        # Run each demo scenario non-interactively
+        echo "🔒 Testing Security & Authentication Demo..."
+        timeout 300 ./scripts/demo.sh --demo security || (echo "❌ Security demo failed" && exit 1)
+        
+        echo "⚡ Testing Auto-scaling Demo..."
+        timeout 300 ./scripts/demo.sh --demo autoscaling || (echo "❌ Auto-scaling demo failed" && exit 1)
+        
+        echo "🚦 Testing Canary Deployment Demo..."
+        timeout 300 ./scripts/demo.sh --demo canary || (echo "❌ Canary demo failed" && exit 1)
+        
+        echo "🌐 Testing Multi-tenant Isolation Demo..."
+        timeout 300 ./scripts/demo.sh --demo multitenancy || (echo "❌ Multi-tenancy demo failed" && exit 1)
+        
+        echo "📊 Testing Observability Demo..."
+        timeout 300 ./scripts/demo.sh --demo observability || (echo "❌ Observability demo failed" && exit 1)
+        
+        echo "✅ All demo scenarios passed!"
+        
+    - name: Test model inference endpoints
+      run: |
+        echo "🤖 Testing model inference endpoints..."
+        
+        # Get JWT tokens
+        TOKENS=$(./scripts/get-jwt-tokens.sh)
+        TOKEN_A=$(echo "$TOKENS" | jq -r '.tokens["tenant-a"]')
+        TOKEN_C=$(echo "$TOKENS" | jq -r '.tokens["tenant-c"]')
+        
+        # Start port-forward in background
+        kubectl port-forward -n istio-system svc/istio-ingressgateway 8080:80 &
+        PF_PID=$!
+        sleep 10
+        
+        # Test sklearn-iris model (tenant-a)
+        echo "🧪 Testing sklearn-iris model..."
+        curl -s -f -X POST \
+          -H "Content-Type: application/json" \
+          -H "Authorization: Bearer $TOKEN_A" \
+          -H "x-tenant: tenant-a" \
+          -H "x-ai-eg-model: sklearn-iris" \
+          http://localhost:8080/v1/models/sklearn-iris:predict \
+          -d '{"instances": [[5.1, 3.5, 1.4, 0.2]]}' | jq .
+          
+        # Test pytorch-resnet model (tenant-c)
+        echo "🧪 Testing pytorch-resnet model..."
+        curl -s -f -X POST \
+          -H "Content-Type: application/json" \
+          -H "Authorization: Bearer $TOKEN_C" \
+          -H "x-tenant: tenant-c" \
+          -H "x-ai-eg-model: pytorch-resnet" \
+          http://localhost:8080/v1/models/pytorch-resnet:predict \
+          -d '{"instances": [[[0.1, 0.2, 0.3]]]}' | jq .
+          
+        # Cleanup port-forward
+        kill $PF_PID
+        
+        echo "✅ Model inference tests passed!"
+        
+    - name: Test security isolation
+      run: |
+        echo "🔐 Testing tenant security isolation..."
+        
+        # Get JWT tokens
+        TOKENS=$(./scripts/get-jwt-tokens.sh)
+        TOKEN_A=$(echo "$TOKENS" | jq -r '.tokens["tenant-a"]')
+        TOKEN_C=$(echo "$TOKENS" | jq -r '.tokens["tenant-c"]')
+        
+        # Start port-forward in background
+        kubectl port-forward -n istio-system svc/istio-ingressgateway 8080:80 &
+        PF_PID=$!
+        sleep 10
+        
+        # Test that tenant-a cannot access tenant-c model (should fail)
+        echo "🚫 Testing cross-tenant access (should fail)..."
+        if curl -s -f -X POST \
+          -H "Content-Type: application/json" \
+          -H "Authorization: Bearer $TOKEN_A" \
+          -H "x-tenant: tenant-c" \
+          -H "x-ai-eg-model: pytorch-resnet" \
+          http://localhost:8080/v1/models/pytorch-resnet:predict \
+          -d '{"instances": [[[0.1, 0.2, 0.3]]]}' 2>/dev/null; then
+          echo "❌ Security isolation failed - tenant-a accessed tenant-c model"
+          kill $PF_PID
+          exit 1
+        else
+          echo "✅ Security isolation working - cross-tenant access denied"
+        fi
+        
+        # Cleanup port-forward
+        kill $PF_PID
+        
+    - name: Test observability stack
+      run: |
+        echo "📊 Testing observability stack..."
+        
+        # Check Prometheus
+        kubectl get pods -n monitoring -l app.kubernetes.io/name=prometheus
+        
+        # Check Grafana
+        kubectl get pods -n monitoring -l app.kubernetes.io/name=grafana
+        
+        # Check Kiali
+        kubectl get pods -n monitoring -l app.kubernetes.io/name=kiali
+        
+        # Test metrics collection
+        kubectl port-forward -n monitoring svc/prometheus-kube-prometheus-prometheus 9090:9090 &
+        PF_PID=$!
+        sleep 10
+        
+        # Query for some basic metrics
+        curl -s "http://localhost:9090/api/v1/query?query=up" | jq '.data.result | length' > /dev/null || exit 1
+        
+        # Cleanup port-forward
+        kill $PF_PID
+        
+        echo "✅ Observability stack tests passed!"
+        
+    - name: Generate test report
+      if: always()
+      run: |
+        echo "📋 Generating test report..."
+        
+        echo "## 🎯 Test Results Summary" > test-report.md
+        echo "" >> test-report.md
+        echo "### Platform Components Status" >> test-report.md
+        echo "\`\`\`" >> test-report.md
+        kubectl get pods --all-namespaces >> test-report.md
+        echo "\`\`\`" >> test-report.md
+        echo "" >> test-report.md
+        
+        echo "### Gateway Resources" >> test-report.md
+        echo "\`\`\`" >> test-report.md
+        kubectl get gateway,aigatewayroute,aiservicebackend -n envoy-gateway-system >> test-report.md
+        echo "\`\`\`" >> test-report.md
+        echo "" >> test-report.md
+        
+        echo "### Inference Services" >> test-report.md
+        echo "\`\`\`" >> test-report.md
+        kubectl get inferenceservice --all-namespaces >> test-report.md
+        echo "\`\`\`" >> test-report.md
+        echo "" >> test-report.md
+        
+        echo "### Resource Usage" >> test-report.md
+        echo "\`\`\`" >> test-report.md
+        kubectl top nodes >> test-report.md
+        echo "\`\`\`" >> test-report.md
+        
+        cat test-report.md
+        
+    - name: Cleanup
+      if: always()
+      run: |
+        echo "🧹 Cleaning up resources..."
+        
+        # Show final system resources
+        echo "💻 System resources before cleanup:"
+        df -h || true
+        free -h || true
+        docker system df || true
+        
+        # Show cluster status for debugging
+        echo "🔍 Final cluster status:"
+        kubectl get nodes || true
+        kubectl get pods --all-namespaces --field-selector=status.phase!=Running,status.phase!=Succeeded || true
+        
+        # Run cleanup script
+        chmod +x scripts/cleanup.sh || true
+        ./scripts/cleanup.sh || echo "Cleanup completed with warnings"
+        
+        # Additional cleanup
+        docker system prune -f || true
+        kind delete clusters --all || echo "No clusters to delete"
+        
+        # Show final disk usage
+        echo "💻 Final disk usage:"
+        df -h || true
+        
+    - name: Upload test artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results
+        path: |
+          test-report.md
+          /tmp/kind-logs-*
+        retention-days: 30
