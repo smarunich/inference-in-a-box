@@ -14,23 +14,24 @@ const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState('models');
   const { logout } = useAuth();
 
-  // MLOps Concerns: Model lifecycle, deployment, testing, and day-2 operations
+  // MLOps Concerns: Model lifecycle, deployment, and day-2 operations
   const mlopsTabs = [
-    { id: 'models', label: 'Model Management', icon: Database, component: ModelList, description: 'View, manage, and monitor AI/ML models across all tenants' },
     { id: 'create', label: 'Deploy Models', icon: Settings, component: ModelForm, description: 'Deploy new models to any tenant namespace' },
+    { id: 'models', label: 'Model Management', icon: Database, component: ModelList, description: 'View, manage, and monitor AI/ML models across all tenants' },
+    { id: 'inference', label: 'Test Model Inference', icon: Activity, component: InferenceTest, description: 'Test model APIs and validate inference endpoints' },
     { id: 'publishing', label: 'Model Publishing', icon: Globe, component: PublishingDashboard, description: 'Publish models to external API endpoints with authentication' },
-    { id: 'inference', label: 'Test Inference', icon: Activity, component: InferenceTest, description: 'Test model predictions and validate deployments' },
+
   ];
 
-  // Developer Concerns: API access, usage monitoring, and basic debugging
+  // Developer Concerns: API access, usage monitoring, and application debugging
   const developerTabs = [
-    { id: 'system', label: 'API Keys & Usage', icon: Shield, component: AdminSystem, description: 'Monitor API key usage, rate limits, and access patterns' },
-    { id: 'logs', label: 'Application Logs', icon: FileText, component: AdminLogs, description: 'View application logs and debugging information' },
+    { id: 'logs', label: 'Application Logs', icon: FileText, component: AdminLogs, description: 'View application logs and debugging information for model services' },
   ];
 
   // Platform Operator Concerns: Infrastructure, resources, and system administration
   const platformTabs = [
-    { id: 'resources', label: 'Infrastructure', icon: Users, component: AdminResources, description: 'Manage pods, services, deployments, and cluster resources' },
+    { id: 'system', label: 'System Overview', icon: Shield, component: AdminSystem, description: 'Monitor cluster health, nodes, namespaces, and deployment status' },
+    { id: 'resources', label: 'Cluster Resources', icon: Users, component: AdminResources, description: 'Monitor pods, services, gateways, and networking resources' },
     { id: 'kubectl', label: 'System Console', icon: Terminal, component: AdminKubectl, description: 'Execute kubectl commands and system operations' },
   ];
 
@@ -123,7 +124,7 @@ const AdminDashboard = () => {
             💻 Developer Concerns
           </h4>
           <p style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.75rem' }}>
-            API access, usage monitoring, logs, and developer debugging tools
+            API testing, application debugging, and developer-focused tools
           </p>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '0.75rem' }}>
             {developerTabs.map(tab => {

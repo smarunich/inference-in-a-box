@@ -127,7 +127,6 @@ main() {
     configure_docker
     build_management_service
     push_images
-    update_manifests
     show_image_info
     
     print_success "Docker images built and pushed successfully!"
