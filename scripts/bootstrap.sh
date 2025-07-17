@@ -449,6 +449,7 @@ install_envoy_ai_gateway() {
     helm upgrade -i aieg oci://docker.io/envoyproxy/ai-gateway-helm \
         --version v${ENVOY_AI_GATEWAY_VERSION} \
         --namespace envoy-ai-gateway-system \
+        --set extProc.logLevel="debug" \
         --create-namespace
 
     kubectl wait --timeout=2m -n envoy-ai-gateway-system deployment/ai-gateway-controller --for=condition=Available
