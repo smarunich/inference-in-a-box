@@ -113,6 +113,7 @@ func (s *Server) SetupRoutes() {
 				admin.GET("/resources", s.adminService.GetResources)
 				admin.GET("/logs", s.adminService.GetLogs)
 				admin.POST("/kubectl", s.adminService.ExecuteKubectl)
+				admin.GET("/ai-gateway-service", s.adminService.GetAIGatewayService)
 			}
 		}
 	}

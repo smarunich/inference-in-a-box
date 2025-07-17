@@ -35,12 +35,16 @@ const DeveloperConsole = () => {
   const [requestPresets, setRequestPresets] = useState([]);
   const [selectedPreset, setSelectedPreset] = useState('');
   
+  // AI Gateway service state
+  const [aiGatewayService, setAIGatewayService] = useState(null);
+  
   const api = useApi();
   const { user } = useAuth();
 
   useEffect(() => {
     fetchPublishedModels();
     fetchTestHistory();
+    fetchAIGatewayService();
   }, []);
 
   const fetchTestHistory = async () => {
@@ -50,6 +54,16 @@ const DeveloperConsole = () => {
     } catch (error) {
       console.error('Error fetching test history:', error);
       // Don't show error toast for test history as it's not critical
+    }
+  };
+
+  const fetchAIGatewayService = async () => {
+    try {
+      const response = await api.getAIGatewayService();
+      setAIGatewayService(response.data);
+    } catch (error) {
+      console.error('Error fetching AI Gateway service:', error);
+      // Don't show error toast as this is not critical for basic functionality
     }
   };
 
@@ -83,14 +97,7 @@ const DeveloperConsole = () => {
           temperature: 0.7
         }
       : {
-          instances: [
-            { 
-              feature1: 1.0, 
-              feature2: 2.0, 
-              feature3: 0.5,
-              feature4: "sample_text"
-            }
-          ]
+          inputs: [[5.1, 3.5, 1.4, 0.2]]
         };
     
     setTestRequest(JSON.stringify(sampleData, null, 2));
@@ -138,17 +145,17 @@ const DeveloperConsole = () => {
         name: 'Single Instance',
         description: 'Basic single prediction',
         data: {
-          instances: [{ feature1: 1.0, feature2: 2.0, feature3: 0.5 }]
+          inputs: [[5.1, 3.5, 1.4, 0.2]]
         }
       },
       {
         name: 'Batch Prediction',
         description: 'Multiple instances',
         data: {
-          instances: [
-            { feature1: 1.0, feature2: 2.0, feature3: 0.5 },
-            { feature1: 2.0, feature2: 1.0, feature3: 1.0 },
-            { feature1: 0.5, feature2: 3.0, feature3: 0.8 }
+          inputs: [
+            [5.1, 3.5, 1.4, 0.2],
+            [4.9, 3.0, 1.4, 0.2],
+            [4.7, 3.2, 1.3, 0.2]
           ]
         }
       }
@@ -261,17 +268,28 @@ const DeveloperConsole = () => {
   const generateCurlCommand = () => {
     if (!selectedModel || !testRequest.trim()) return '';
 
-    const endpoint = useCustomConfig && customEndpoint 
-      ? customEndpoint
-      : selectedModel.modelType === 'openai' 
-        ? `${selectedModel.externalURL}/chat/completions`
-        : `${selectedModel.externalURL}/predict`;
-
+    let endpoint;
+    let headers;
     const method = useCustomConfig ? customMethod : 'POST';
-    
-    const headers = useCustomConfig 
-      ? customHeaders.filter(h => h.key && h.value).map(h => `  -H "${h.key}: ${h.value}"`).join(' \\\\\n')
-      : `  -H "Content-Type: application/json" \\\\\n  -H "X-API-Key: ${selectedModel.apiKey}"`;
+
+    if (useCustomConfig && customEndpoint) {
+      endpoint = customEndpoint;
+      headers = customHeaders.filter(h => h.key && h.value).map(h => `  -H "${h.key}: ${h.value}"`).join(' \\\\\n');
+    } else if (selectedModel.modelType === 'openai') {
+      // OpenAI models use external URL
+      endpoint = `${selectedModel.externalURL}/chat/completions`;
+      headers = `  -H "Content-Type: application/json" \\\\\n  -H "X-API-Key: ${selectedModel.apiKey}"`;
+    } else {
+      // Traditional models use AI Gateway service IP with Host header
+      if (aiGatewayService && aiGatewayService.clusterIP) {
+        endpoint = `http://${aiGatewayService.clusterIP}/published/models/${selectedModel.modelName}`;
+        headers = `  -H "Host: ${selectedModel.publicHostname}" \\\\\n  -H "x-api-key: ${selectedModel.apiKey}" \\\\\n  -H "Content-Type: application/json"`;
+      } else {
+        // Fallback to external URL if AI Gateway service not available
+        endpoint = `${selectedModel.externalURL}/predict`;
+        headers = `  -H "Content-Type: application/json" \\\\\n  -H "X-API-Key: ${selectedModel.apiKey}"`;
+      }
+    }
 
     return `curl -X ${method} "${endpoint}" \\\\\n${headers} \\\\\n  -d '${testRequest.replace(/'/g, "\\'")}'`;
   };
@@ -279,23 +297,41 @@ const DeveloperConsole = () => {
   const generatePythonCode = () => {
     if (!selectedModel || !testRequest.trim()) return '';
 
-    const endpoint = useCustomConfig && customEndpoint 
-      ? customEndpoint
-      : selectedModel.modelType === 'openai' 
-        ? `${selectedModel.externalURL}/chat/completions`
-        : `${selectedModel.externalURL}/predict`;
-
+    let endpoint;
+    let headers;
     const method = useCustomConfig ? customMethod.toLowerCase() : 'post';
-    
-    const headers = useCustomConfig 
-      ? customHeaders.filter(h => h.key && h.value).reduce((acc, h) => {
-          acc[h.key] = h.value;
-          return acc;
-        }, {})
-      : {
+
+    if (useCustomConfig && customEndpoint) {
+      endpoint = customEndpoint;
+      headers = customHeaders.filter(h => h.key && h.value).reduce((acc, h) => {
+        acc[h.key] = h.value;
+        return acc;
+      }, {});
+    } else if (selectedModel.modelType === 'openai') {
+      // OpenAI models use external URL
+      endpoint = `${selectedModel.externalURL}/chat/completions`;
+      headers = {
+        "Content-Type": "application/json",
+        "X-API-Key": selectedModel.apiKey
+      };
+    } else {
+      // Traditional models use AI Gateway service IP with Host header
+      if (aiGatewayService && aiGatewayService.clusterIP) {
+        endpoint = `http://${aiGatewayService.clusterIP}/published/models/${selectedModel.modelName}`;
+        headers = {
+          "Host": selectedModel.publicHostname,
+          "x-api-key": selectedModel.apiKey,
+          "Content-Type": "application/json"
+        };
+      } else {
+        // Fallback to external URL if AI Gateway service not available
+        endpoint = `${selectedModel.externalURL}/predict`;
+        headers = {
           "Content-Type": "application/json",
           "X-API-Key": selectedModel.apiKey
         };
+      }
+    }
 
     const headersStr = JSON.stringify(headers, null, 4);
 
@@ -325,23 +361,41 @@ else:
   const generateJavaScriptCode = () => {
     if (!selectedModel || !testRequest.trim()) return '';
 
-    const endpoint = useCustomConfig && customEndpoint 
-      ? customEndpoint
-      : selectedModel.modelType === 'openai' 
-        ? `${selectedModel.externalURL}/chat/completions`
-        : `${selectedModel.externalURL}/predict`;
-
+    let endpoint;
+    let headers;
     const method = useCustomConfig ? customMethod : 'POST';
-    
-    const headers = useCustomConfig 
-      ? customHeaders.filter(h => h.key && h.value).reduce((acc, h) => {
-          acc[h.key] = h.value;
-          return acc;
-        }, {})
-      : {
+
+    if (useCustomConfig && customEndpoint) {
+      endpoint = customEndpoint;
+      headers = customHeaders.filter(h => h.key && h.value).reduce((acc, h) => {
+        acc[h.key] = h.value;
+        return acc;
+      }, {});
+    } else if (selectedModel.modelType === 'openai') {
+      // OpenAI models use external URL
+      endpoint = `${selectedModel.externalURL}/chat/completions`;
+      headers = {
+        "Content-Type": "application/json",
+        "X-API-Key": selectedModel.apiKey
+      };
+    } else {
+      // Traditional models use AI Gateway service IP with Host header
+      if (aiGatewayService && aiGatewayService.clusterIP) {
+        endpoint = `http://${aiGatewayService.clusterIP}/published/models/${selectedModel.modelName}`;
+        headers = {
+          "Host": selectedModel.publicHostname,
+          "x-api-key": selectedModel.apiKey,
+          "Content-Type": "application/json"
+        };
+      } else {
+        // Fallback to external URL if AI Gateway service not available
+        endpoint = `${selectedModel.externalURL}/predict`;
+        headers = {
           "Content-Type": "application/json",
           "X-API-Key": selectedModel.apiKey
         };
+      }
+    }
 
     const headersStr = JSON.stringify(headers, null, 4);
 
