@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -188,20 +189,8 @@ func (v *PublishingValidator) ValidatePublishRequest(namespace, modelName string
 	
 	// Validate public hostname
 	if config.PublicHostname != "" {
-		// Basic hostname validation
-		if strings.Contains(config.PublicHostname, "://") {
-			errors = append(errors, ValidationError{
-				Field:   "publicHostname",
-				Value:   config.PublicHostname,
-				Message: "Public hostname should not include protocol (http/https)",
-			})
-		}
-		if strings.Contains(config.PublicHostname, "/") {
-			errors = append(errors, ValidationError{
-				Field:   "publicHostname",
-				Value:   config.PublicHostname,
-				Message: "Public hostname should not include path",
-			})
+		if validationErr := v.validateHostname(config.PublicHostname); validationErr != nil {
+			errors = append(errors, *validationErr)
 		}
 	}
 	
@@ -277,20 +266,8 @@ func (v *PublishingValidator) ValidateUpdateRequest(namespace, modelName string,
 	
 	// Validate public hostname
 	if config.PublicHostname != "" {
-		// Basic hostname validation
-		if strings.Contains(config.PublicHostname, "://") {
-			errors = append(errors, ValidationError{
-				Field:   "publicHostname",
-				Value:   config.PublicHostname,
-				Message: "Public hostname should not include protocol (http/https)",
-			})
-		}
-		if strings.Contains(config.PublicHostname, "/") {
-			errors = append(errors, ValidationError{
-				Field:   "publicHostname",
-				Value:   config.PublicHostname,
-				Message: "Public hostname should not include path",
-			})
+		if validationErr := v.validateHostname(config.PublicHostname); validationErr != nil {
+			errors = append(errors, *validationErr)
 		}
 	}
 	
@@ -304,6 +281,123 @@ func (v *PublishingValidator) ValidateUpdateRequest(namespace, modelName string,
 	}
 	
 	return errors
+}
+
+// validateHostname validates hostname format and patterns
+func (v *PublishingValidator) validateHostname(hostname string) *ValidationError {
+	// Check for protocol inclusion
+	if strings.Contains(hostname, "://") {
+		return &ValidationError{
+			Field:   "publicHostname",
+			Value:   hostname,
+			Message: "Public hostname should not include protocol (http/https)",
+		}
+	}
+	
+	// Check for path inclusion
+	if strings.Contains(hostname, "/") {
+		return &ValidationError{
+			Field:   "publicHostname",
+			Value:   hostname,
+			Message: "Public hostname should not include path",
+		}
+	}
+	
+	// Check for valid hostname format
+	if len(hostname) == 0 {
+		return &ValidationError{
+			Field:   "publicHostname",
+			Value:   hostname,
+			Message: "Hostname cannot be empty",
+		}
+	}
+	
+	// Check hostname length (DNS limit is 253 characters)
+	if len(hostname) > 253 {
+		return &ValidationError{
+			Field:   "publicHostname",
+			Value:   hostname,
+			Message: "Hostname exceeds maximum length of 253 characters",
+		}
+	}
+	
+	// Check for valid hostname characters (basic validation)
+	validHostnamePattern := `^[a-zA-Z0-9]([a-zA-Z0-9\-\.]*[a-zA-Z0-9])?$`
+	if matched, _ := regexp.MatchString(validHostnamePattern, hostname); !matched {
+		return &ValidationError{
+			Field:   "publicHostname",
+			Value:   hostname,
+			Message: "Hostname contains invalid characters. Use only letters, numbers, hyphens, and dots",
+		}
+	}
+	
+	// Check for consecutive dots or hyphens
+	if strings.Contains(hostname, "..") || strings.Contains(hostname, "--") {
+		return &ValidationError{
+			Field:   "publicHostname",
+			Value:   hostname,
+			Message: "Hostname cannot contain consecutive dots or hyphens",
+		}
+	}
+	
+	// Check if hostname starts or ends with dot or hyphen
+	if strings.HasPrefix(hostname, ".") || strings.HasSuffix(hostname, ".") || 
+		strings.HasPrefix(hostname, "-") || strings.HasSuffix(hostname, "-") {
+		return &ValidationError{
+			Field:   "publicHostname", 
+			Value:   hostname,
+			Message: "Hostname cannot start or end with dot or hyphen",
+		}
+	}
+	
+	// Validate hostname pattern categories
+	if err := v.validateHostnamePattern(hostname); err != nil {
+		return err
+	}
+	
+	return nil
+}
+
+// validateHostnamePattern validates specific hostname patterns
+func (v *PublishingValidator) validateHostnamePattern(hostname string) *ValidationError {
+	// Default hostname - always valid
+	if hostname == "api.router.inference-in-a-box" {
+		return nil
+	}
+	
+	// Subdomain of inference-in-a-box - validate subdomain part
+	if strings.HasSuffix(hostname, ".inference-in-a-box") {
+		subdomain := strings.TrimSuffix(hostname, ".inference-in-a-box")
+		if len(subdomain) == 0 {
+			return &ValidationError{
+				Field:   "publicHostname",
+				Value:   hostname,
+				Message: "Subdomain cannot be empty for .inference-in-a-box domains",
+			}
+		}
+		if len(subdomain) > 63 {
+			return &ValidationError{
+				Field:   "publicHostname",
+				Value:   hostname,
+				Message: "Subdomain exceeds maximum length of 63 characters",
+			}
+		}
+		return nil
+	}
+	
+	// Custom hostname - ensure it has at least one dot (FQDN)
+	if !strings.Contains(hostname, ".") {
+		return &ValidationError{
+			Field:   "publicHostname",
+			Value:   hostname,
+			Message: "Custom hostname must be a fully qualified domain name (contain at least one dot)",
+		}
+	}
+	
+	// Additional validation for custom domains can be added here
+	// For example, checking against a whitelist or DNS resolution
+	
+	return nil
 }
 
 // RecoveryHandler handles recovery from publishing failures

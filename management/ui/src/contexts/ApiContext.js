@@ -81,6 +81,12 @@ export const ApiProvider = ({ children }) => {
     getResources: () => api.get('/admin/resources'),
     getAdminLogs: (params = {}) => api.get('/admin/logs', { params }),
     executeKubectl: (command) => api.post('/admin/kubectl', { command }),
+    getAIGatewayService: () => api.get('/admin/ai-gateway-service'),
+    
+    // Test execution endpoints for published models
+    executeTest: (testRequest) => api.post('/publish/test/execute', testRequest),
+    validateTestRequest: (testRequest) => api.post('/publish/test/validate', testRequest),
+    getTestHistory: () => api.get('/publish/test/history'),
   };
 
   return (

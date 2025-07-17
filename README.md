@@ -843,7 +843,7 @@ kind delete cluster --name inference-in-a-box
 - **Istio**: v1.26.2
 - **KServe**: v0.15.2
 - **Knative**: v1.18.1
-- **Envoy Gateway**: v1.4.1
+- **Envoy Gateway**: v1.4.2
 - **Envoy AI Gateway**: v0.2.1
 - **Cert Manager**: v1.18.1
 - **Prometheus Stack**: v75.6.0

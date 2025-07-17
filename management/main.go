@@ -32,9 +32,10 @@ func main() {
 	modelService := NewModelService(k8sClient)
 	adminService := NewAdminService(k8sClient)
 	publishingService := NewPublishingService(k8sClient, authService)
+	testExecutionService := NewTestExecutionService(publishingService, config)
 	
 	// Initialize HTTP server
-	server := NewServer(config, authService, modelService, adminService, publishingService)
+	server := NewServer(config, authService, modelService, adminService, publishingService, testExecutionService)
 	
 	// Setup routes
 	server.SetupRoutes()
@@ -65,6 +66,9 @@ func main() {
 		log.Println("  GET  /api/models/:name/publish - Get published model")
 		log.Println("  POST /api/models/:name/publish/rotate-key - Rotate API key")
 		log.Println("  GET  /api/published-models - List published models")
+		log.Println("  POST /api/publish/test/execute - Execute test for published models")
+		log.Println("  GET  /api/publish/test/history - Get published model test history")
+		log.Println("  POST /api/publish/test/validate - Validate published model test request")
 		log.Println("  GET  /* - Serve React application")
 		
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {

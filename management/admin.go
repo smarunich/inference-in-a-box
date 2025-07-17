@@ -477,6 +477,57 @@ func (s *AdminService) ExecuteKubectl(c *gin.Context) {
 	})
 }
 
+// GetAIGatewayService handles GET /api/admin/ai-gateway-service
+func (s *AdminService) GetAIGatewayService(c *gin.Context) {
+	// Get the AI Gateway service (EnvoyGateway service)
+	services, err := s.k8sClient.GetServices("envoy-gateway-system")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{
+			Error:   "Failed to get services",
+			Details: err.Error(),
+		})
+		return
+	}
+
+	// Find the gateway service
+	var gatewayService *corev1.Service
+	for _, service := range services {
+		if service.Name == "envoy-gateway" {
+			gatewayService = &service
+			break
+		}
+	}
+
+	if gatewayService == nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{
+			Error: "AI Gateway service not found",
+		})
+		return
+	}
+
+	// Extract service information
+	serviceInfo := map[string]interface{}{
+		"name":      gatewayService.Name,
+		"namespace": gatewayService.Namespace,
+		"type":      string(gatewayService.Spec.Type),
+		"clusterIP": gatewayService.Spec.ClusterIP,
+		"ports":     gatewayService.Spec.Ports,
+	}
+
+	// Add external IP if available
+	if len(gatewayService.Status.LoadBalancer.Ingress) > 0 {
+		ingress := gatewayService.Status.LoadBalancer.Ingress[0]
+		if ingress.IP != "" {
+			serviceInfo["externalIP"] = ingress.IP
+		}
+		if ingress.Hostname != "" {
+			serviceInfo["externalHostname"] = ingress.Hostname
+		}
+	}
+
+	c.JSON(http.StatusOK, serviceInfo)
+}
+
 // Helper function to convert resource list to map
 func convertResourceList(resources corev1.ResourceList) map[string]interface{} {
 	result := make(map[string]interface{})

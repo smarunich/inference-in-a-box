@@ -9,12 +9,28 @@ spec:
   - name: http
     protocol: HTTP
     port: 80
+    hostname: "*.inference-in-a-box"
+    allowedRoutes:
+      namespaces:
+        from: All
+  - name: http-default
+    protocol: HTTP
+    port: 80
+    hostname: "api.router.inference-in-a-box"
     allowedRoutes:
       namespaces:
         from: All
   - name: https
     protocol: HTTPS
     port: 443
+    hostname: "*.inference-in-a-box"
+    allowedRoutes:
+      namespaces:
+        from: All
+  - name: https-default
+    protocol: HTTPS
+    port: 443
+    hostname: "api.router.inference-in-a-box"
     allowedRoutes:
       namespaces:
         from: All

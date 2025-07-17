@@ -896,6 +896,12 @@ func (s *PublishingService) createHTTPRoute(namespace, modelName, routeName stri
 		hostname = "api.router.inference-in-a-box"
 	}
 	
+	// Get KServe hostname from InferenceService
+	kserveHostname, err := s.generateKServeHostname(modelName, namespace)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate KServe hostname: %w", err)
+	}
+	
 	// Create HTTPRoute configuration
 	httpRoute := map[string]interface{}{
 		"apiVersion": "gateway.networking.k8s.io/v1",
@@ -936,6 +942,16 @@ func (s *PublishingService) createHTTPRoute(namespace, modelName, routeName stri
 						},
 					},
 					"filters": []interface{}{
+						map[string]interface{}{
+							"type": "URLRewrite",
+							"urlRewrite": map[string]interface{}{
+								"hostname": kserveHostname,
+								"path": map[string]interface{}{
+									"type":            "ReplaceFullPath",
+									"replaceFullPath": s.generateKServeModelPath(modelName),
+								},
+							},
+						},
 						map[string]interface{}{
 							"type": "RequestHeaderModifier",
 							"requestHeaderModifier": map[string]interface{}{
@@ -986,6 +1002,39 @@ func (s *PublishingService) createHTTPRoute(namespace, modelName, routeName stri
 	return fmt.Sprintf("https://%s%s", hostname, externalPath), nil
 }
 
+// generateKServeHostname generates the KServe predictor hostname for a model by looking up the InferenceService
+func (s *PublishingService) generateKServeHostname(modelName, namespace string) (string, error) {
+	// Get the InferenceService to extract the URL
+	inferenceService, err := s.k8sClient.GetInferenceService(namespace, modelName)
+	if err != nil {
+		return "", fmt.Errorf("failed to get InferenceService: %w", err)
+	}
+	
+	// Extract URL from status
+	if status, ok := inferenceService["status"].(map[string]interface{}); ok {
+		if url, ok := status["url"].(string); ok {
+			// Parse the URL to extract hostname
+			// Format: http://model-name.namespace.127.0.0.1.sslip.io
+			// We need to remove the protocol and return just the hostname
+			if len(url) > 7 && url[:7] == "http://" {
+				return url[7:], nil
+			}
+			if len(url) > 8 && url[:8] == "https://" {
+				return url[8:], nil
+			}
+			return url, nil
+		}
+	}
+	
+	// Fallback to constructed hostname if status URL is not available
+	return fmt.Sprintf("%s-predictor.%s.127.0.0.1.sslip.io", modelName, namespace), nil
+}
+
+// generateKServeModelPath generates the KServe model endpoint path for a model
+func (s *PublishingService) generateKServeModelPath(modelName string) string {
+	return fmt.Sprintf("/v1/models/%s:predict", modelName)
+}
+
 func (s *PublishingService) createAIGatewayRoute(namespace, modelName, routeName string, config PublishConfig) (string, error) {
 	// Generate external path for OpenAI compatibility
 	externalPath := config.ExternalPath
@@ -993,15 +1042,37 @@ func (s *PublishingService) createAIGatewayRoute(namespace, modelName, routeName
 		externalPath = fmt.Sprintf("/v1/models/%s", modelName)
 	}
 
-	// Create AIServiceBackend resource (directly referencing KServe service)
+	// Determine hostname
+	hostname := config.PublicHostname
+	if hostname == "" {
+		hostname = "api.router.inference-in-a-box"
+	}
+
+	// Get KServe hostname from InferenceService (same as HTTPRoute)
+	kserveHostname, err := s.generateKServeHostname(modelName, namespace)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate KServe hostname: %w", err)
+	}
+
+	// Create AIServiceBackend resource with KServe hostname
 	backendName := fmt.Sprintf("%s-backend", modelName)
-	if err := s.createAIServiceBackend(namespace, modelName, backendName); err != nil {
+	if err := s.createAIServiceBackend(namespace, modelName, backendName, kserveHostname); err != nil {
 		return "", fmt.Errorf("failed to create AIServiceBackend: %w", err)
 	}
 
 	// Create ReferenceGrant for cross-namespace access
 	if err := s.createReferenceGrant(namespace, modelName); err != nil {
 		return "", fmt.Errorf("failed to create ReferenceGrant: %w", err)
+	}
+
+	// Create EnvoyExtensionPolicy for URL rewriting and host header modification
+	if err := s.createAIGatewayEnvoyExtensionPolicy(namespace, modelName, backendName, hostname, kserveHostname); err != nil {
+		return "", fmt.Errorf("failed to create EnvoyExtensionPolicy: %w", err)
+	}
+
+	// Update Gateway to include this hostname
+	if err := s.updateGatewayForHostname(hostname); err != nil {
+		return "", fmt.Errorf("failed to update gateway for hostname %s: %w", hostname, err)
 	}
 	
 	// Create AIGatewayRoute configuration
@@ -1016,6 +1087,7 @@ func (s *PublishingService) createAIGatewayRoute(namespace, modelName, routeName
 				"model-name": modelName,
 				"tenant":     namespace,
 				"type":       "openai",
+				"hostname":   hostname,
 			},
 		},
 		"spec": map[string]interface{}{
@@ -1024,11 +1096,13 @@ func (s *PublishingService) createAIGatewayRoute(namespace, modelName, routeName
 			},
 			"targetRefs": []interface{}{
 				map[string]interface{}{
-					"name":  "envoy-ai-gateway-basic",
-					"kind":  "Gateway",
-					"group": "gateway.networking.k8s.io",
+					"name":      "ai-inference-gateway",
+					"namespace": "envoy-gateway-system",
+					"kind":      "Gateway",
+					"group":     "gateway.networking.k8s.io",
 				},
 			},
+			"hostnames": []interface{}{hostname},
 			"rules": []interface{}{
 				map[string]interface{}{
 					"matches": []interface{}{
@@ -1039,9 +1113,14 @@ func (s *PublishingService) createAIGatewayRoute(namespace, modelName, routeName
 									"name":  "x-ai-eg-model",
 									"value": modelName,
 								},
+								// Removed x-api-key header match - AIGateway handles auth differently
+								// Authentication is handled at the gateway level
 							},
 						},
 					},
+					// AIGatewayRoute relies on the AI Gateway to handle OpenAI protocol transformation
+					// The AIServiceBackend routes through istio-ingressgateway to KServe services
+					// Header injection is handled at the gateway level through the AI Gateway processing
 					"backendRefs": []interface{}{
 						map[string]interface{}{
 							"name":   backendName,
@@ -1073,10 +1152,6 @@ func (s *PublishingService) createAIGatewayRoute(namespace, modelName, routeName
 	}
 	
 	// Return the external URL using the configured hostname
-	hostname := config.PublicHostname
-	if hostname == "" {
-		hostname = "api.router.inference-in-a-box"
-	}
 	return fmt.Sprintf("https://%s%s", hostname, externalPath), nil
 }
 
@@ -1489,6 +1564,7 @@ func (s *PublishingService) cleanupGatewayConfiguration(namespace, modelName str
 	routeName := fmt.Sprintf("published-model-%s-%s", namespace, modelName)
 	backendName := fmt.Sprintf("%s-backend", modelName)
 	grantName := fmt.Sprintf("published-model-grant-%s-%s", namespace, modelName)
+	policyName := fmt.Sprintf("published-model-policy-%s-%s", namespace, modelName)
 	
 	// Delete HTTPRoute
 	if err := s.k8sClient.DeleteHTTPRoute("envoy-gateway-system", routeName); err != nil {
@@ -1505,9 +1581,14 @@ func (s *PublishingService) cleanupGatewayConfiguration(namespace, modelName str
 		log.Printf("Failed to cleanup AIServiceBackend %s: %v", backendName, err)
 	}
 	
-	// Delete ReferenceGrant
-	if err := s.k8sClient.DeleteReferenceGrant(namespace, grantName); err != nil {
-		log.Printf("Failed to cleanup ReferenceGrant %s/%s: %v", namespace, grantName, err)
+	// Delete EnvoyExtensionPolicy
+	if err := s.k8sClient.DeleteEnvoyExtensionPolicy("envoy-gateway-system", policyName); err != nil {
+		log.Printf("Failed to cleanup EnvoyExtensionPolicy %s: %v", policyName, err)
+	}
+	
+	// Delete ReferenceGrant (now in istio-system)
+	if err := s.k8sClient.DeleteReferenceGrant("istio-system", grantName); err != nil {
+		log.Printf("Failed to cleanup ReferenceGrant istio-system/%s: %v", grantName, err)
 	}
 }
 
@@ -1526,8 +1607,9 @@ func (s *PublishingService) cleanupPublishedModelMetadata(namespace, modelName s
 }
 
 
-func (s *PublishingService) createAIServiceBackend(namespace, modelName, backendName string) error {
-	// Create AIServiceBackend resource referencing istio-ingressgateway (same as HTTPRoute)
+func (s *PublishingService) createAIServiceBackend(namespace, modelName, backendName, kserveHostname string) error {
+	// Create AIServiceBackend resource that routes through istio-ingressgateway
+	// Same as HTTPRoute but for AI Gateway - requires EnvoyExtensionPolicy for URL rewriting
 	aiServiceBackend := map[string]interface{}{
 		"apiVersion": "aigateway.envoyproxy.io/v1alpha1",
 		"kind":       "AIServiceBackend",
@@ -1538,12 +1620,15 @@ func (s *PublishingService) createAIServiceBackend(namespace, modelName, backend
 				"app":        "published-model",
 				"model-name": modelName,
 				"tenant":     namespace,
+				"kserve-hostname": kserveHostname,
 			},
 		},
 		"spec": map[string]interface{}{
 			"schema": map[string]interface{}{
 				"name": "OpenAI",
 			},
+			// Route through istio-ingressgateway like HTTPRoute
+			// URL rewriting and host header modification handled by EnvoyExtensionPolicy
 			"backendRef": map[string]interface{}{
 				"name":      "istio-ingressgateway",
 				"namespace": "istio-system",
@@ -1561,14 +1646,16 @@ func (s *PublishingService) createAIServiceBackend(namespace, modelName, backend
 }
 
 func (s *PublishingService) createReferenceGrant(namespace, modelName string) error {
-	// Create ReferenceGrant for cross-namespace access
+	// Create ReferenceGrant for cross-namespace access from envoy-gateway-system to istio-system
+	// This allows AIServiceBackend to access istio-ingressgateway service
 	grantName := fmt.Sprintf("published-model-grant-%s-%s", namespace, modelName)
+	
 	referenceGrant := map[string]interface{}{
 		"apiVersion": "gateway.networking.k8s.io/v1beta1",
 		"kind":       "ReferenceGrant",
 		"metadata": map[string]interface{}{
 			"name":      grantName,
-			"namespace": namespace,
+			"namespace": "istio-system",
 			"labels": map[string]interface{}{
 				"app":        "published-model",
 				"model-name": modelName,
@@ -1587,19 +1674,96 @@ func (s *PublishingService) createReferenceGrant(namespace, modelName string) er
 				map[string]interface{}{
 					"group": "",
 					"kind":  "Service",
-					"name":  fmt.Sprintf("%s-predictor", modelName),
+					"name":  "istio-ingressgateway",
 				},
 			},
 		},
 	}
 
-	return s.k8sClient.CreateReferenceGrant(namespace, referenceGrant)
+	return s.k8sClient.CreateReferenceGrant("istio-system", referenceGrant)
 }
 
-// updateGatewayForHostname updates the Gateway resource to include a new hostname
+// createAIGatewayEnvoyExtensionPolicy creates EnvoyExtensionPolicy for URL rewriting and host header modification
+// This targets the HTTPRoute that will be created after AIGatewayRoute with the same name
+// The policy provides the same functionality as HTTPRoute filters but for AI Gateway routing
+func (s *PublishingService) createAIGatewayEnvoyExtensionPolicy(namespace, modelName, backendName, hostname, kserveHostname string) error {
+	policyName := fmt.Sprintf("published-model-policy-%s-%s", namespace, modelName)
+	routeName := fmt.Sprintf("published-model-%s-%s", namespace, modelName)
+	kserveModelPath := s.generateKServeModelPath(modelName)
+	
+	// Lua script to handle URL rewriting and host header modification
+	// This provides HTTPRoute-equivalent functionality for AI Gateway traffic
+	luaScript := fmt.Sprintf(`
+-- URL rewriting and host header modification for AI Gateway
+-- Equivalent to HTTPRoute filters but for OpenAI schema models
+
+function envoy_on_request(request_handle)
+  -- Get current path
+  local path = request_handle:headers():get(":path")
+  
+  -- Only apply transformations for OpenAI API requests
+  if path and (string.match(path, "/v1/chat/completions") or string.match(path, "/v1/completions")) then
+    -- Rewrite host header to KServe hostname (same as HTTPRoute)
+    request_handle:headers():replace("host", "%s")
+    
+    -- Rewrite path to KServe model endpoint
+    request_handle:headers():replace(":path", "%s")
+    
+    -- Add headers for routing context (same as HTTPRoute)
+    request_handle:headers():add("x-tenant", "%s")
+    request_handle:headers():add("x-model-name", "%s")
+    request_handle:headers():add("x-gateway", "published-model")
+    request_handle:headers():add("x-hostname", "%s")
+    request_handle:headers():add("x-model-type", "openai")
+  end
+end
+`, kserveHostname, kserveModelPath, namespace, modelName, hostname)
+	
+	// Create EnvoyExtensionPolicy targeting the HTTPRoute (not AIServiceBackend)
+	// The HTTPRoute will be created after AIGatewayRoute with the same name
+	envoyExtensionPolicy := map[string]interface{}{
+		"apiVersion": "gateway.envoyproxy.io/v1alpha1",
+		"kind":       "EnvoyExtensionPolicy",
+		"metadata": map[string]interface{}{
+			"name":      policyName,
+			"namespace": "envoy-gateway-system",
+			"labels": map[string]interface{}{
+				"app":        "published-model",
+				"model-name": modelName,
+				"tenant":     namespace,
+				"type":       "openai",
+			},
+		},
+		"spec": map[string]interface{}{
+			"targetRefs": []interface{}{
+				map[string]interface{}{
+					"group":     "gateway.networking.k8s.io",
+					"kind":      "HTTPRoute",
+					"name":      routeName,
+				},
+			},
+			"lua": []interface{}{
+				map[string]interface{}{
+					"type":   "Inline",
+					"inline": luaScript,
+				},
+			},
+		},
+	}
+	
+	return s.k8sClient.CreateEnvoyExtensionPolicy("envoy-gateway-system", envoyExtensionPolicy)
+}
+
+// updateGatewayForHostname intelligently updates the Gateway resource for hostname support
 func (s *PublishingService) updateGatewayForHostname(hostname string) error {
 	gatewayNamespace := "envoy-gateway-system"
 	gatewayName := "ai-inference-gateway"
+	
+	// Check if hostname is already covered by wildcard patterns
+	if s.isHostnameCoveredByWildcard(hostname) {
+		log.Printf("Hostname %s is already covered by wildcard patterns, skipping gateway update", hostname)
+		return nil
+	}
 	
 	// Get the current Gateway configuration
 	gateway, err := s.k8sClient.GetGateway(gatewayNamespace, gatewayName)
@@ -1619,37 +1783,18 @@ func (s *PublishingService) updateGatewayForHostname(hostname string) error {
 		return fmt.Errorf("gateway listeners is not an array")
 	}
 	
-	// Track if hostname already exists
-	hostnameExists := false
-	
 	// Check if hostname already exists in any listener
-	for _, listener := range listeners {
-		if l, ok := listener.(map[string]interface{}); ok {
-			if existingHostname, exists := l["hostname"]; exists {
-				if existingHostname == hostname {
-					hostnameExists = true
-					break
-				}
-			}
-		}
+	if s.hostnameExistsInListeners(listeners, hostname) {
+		log.Printf("Hostname %s already exists in gateway listeners", hostname)
+		return nil
 	}
 	
-	// If hostname doesn't exist, add it to the HTTPS listener
-	if !hostnameExists {
-		for i, listener := range listeners {
-			if l, ok := listener.(map[string]interface{}); ok {
-				if name, exists := l["name"]; exists && name == "https" {
-					// For now, we'll replace the hostname rather than adding multiple
-					// In a production system, you might want to support multiple hostnames
-					l["hostname"] = hostname
-					listeners[i] = l
-					break
-				}
-			}
-		}
-		
+	// Add hostname to appropriate listeners if needed
+	updatedListeners, updated := s.addHostnameToListeners(listeners, hostname)
+	
+	if updated {
 		// Update the listeners in the spec
-		spec["listeners"] = listeners
+		spec["listeners"] = updatedListeners
 		
 		// Update the Gateway resource
 		if err := s.k8sClient.UpdateGateway(gatewayNamespace, gateway); err != nil {
@@ -1660,5 +1805,101 @@ func (s *PublishingService) updateGatewayForHostname(hostname string) error {
 	}
 	
 	return nil
+}
+
+// isHostnameCoveredByWildcard checks if hostname is covered by existing wildcard patterns
+func (s *PublishingService) isHostnameCoveredByWildcard(hostname string) bool {
+	// Check if hostname matches *.inference-in-a-box pattern
+	if strings.HasSuffix(hostname, ".inference-in-a-box") {
+		return true
+	}
+	
+	// Check if it's the default hostname
+	if hostname == "api.router.inference-in-a-box" {
+		return true
+	}
+	
+	return false
+}
+
+// hostnameExistsInListeners checks if hostname already exists in listeners
+func (s *PublishingService) hostnameExistsInListeners(listeners []interface{}, hostname string) bool {
+	for _, listener := range listeners {
+		if l, ok := listener.(map[string]interface{}); ok {
+			if existingHostname, exists := l["hostname"]; exists {
+				if existingHostname == hostname {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// addHostnameToListeners adds hostname to listeners if needed, returns updated listeners and bool if updated
+func (s *PublishingService) addHostnameToListeners(listeners []interface{}, hostname string) ([]interface{}, bool) {
+	updated := false
+	
+	// For custom hostnames that don't match our patterns, add specific listeners
+	if !s.isHostnameCoveredByWildcard(hostname) {
+		// Add to both HTTP and HTTPS listeners as new listeners
+		httpListener := map[string]interface{}{
+			"name":     fmt.Sprintf("http-custom-%s", s.sanitizeHostnameForName(hostname)),
+			"protocol": "HTTP",
+			"port":     80,
+			"hostname": hostname,
+			"allowedRoutes": map[string]interface{}{
+				"namespaces": map[string]interface{}{
+					"from": "All",
+				},
+			},
+		}
+		
+		httpsListener := map[string]interface{}{
+			"name":     fmt.Sprintf("https-custom-%s", s.sanitizeHostnameForName(hostname)),
+			"protocol": "HTTPS",
+			"port":     443,
+			"hostname": hostname,
+			"allowedRoutes": map[string]interface{}{
+				"namespaces": map[string]interface{}{
+					"from": "All",
+				},
+			},
+			"tls": map[string]interface{}{
+				"mode": "Terminate",
+				"certificateRefs": []interface{}{
+					map[string]interface{}{
+						"kind": "Secret",
+						"name": "ai-gateway-tls",
+					},
+				},
+				"options": map[string]interface{}{
+					"tls.cipher_suites":       "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256",
+					"tls.min_protocol_version": "TLSv1.2",
+					"tls.max_protocol_version": "TLSv1.3",
+				},
+			},
+		}
+		
+		// Append new listeners
+		listeners = append(listeners, httpListener, httpsListener)
+		updated = true
+	}
+	
+	return listeners, updated
+}
+
+// sanitizeHostnameForName converts hostname to valid Kubernetes name format
+func (s *PublishingService) sanitizeHostnameForName(hostname string) string {
+	// Replace dots and other invalid characters with dashes
+	sanitized := strings.ReplaceAll(hostname, ".", "-")
+	sanitized = strings.ReplaceAll(sanitized, "_", "-")
+	
+	// Ensure it's not too long and is valid
+	if len(sanitized) > 40 {
+		sanitized = sanitized[:40]
+	}
+	
+	return strings.ToLower(sanitized)
 }
 

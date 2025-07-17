@@ -78,6 +78,12 @@ var ReferenceGrantGVR = schema.GroupVersionResource{
 	Resource: "referencegrants",
 }
 
+var EnvoyExtensionPolicyGVR = schema.GroupVersionResource{
+	Group:    "gateway.envoyproxy.io",
+	Version:  "v1alpha1",
+	Resource: "envoyextensionpolicies",
+}
+
 func NewK8sClient() (*K8sClient, error) {
 	config, err := getK8sConfig()
 	if err != nil {
@@ -1250,6 +1256,36 @@ func (k *K8sClient) DeleteReferenceGrant(namespace, grantName string) error {
 	if err != nil {
 		k.logError("DeleteReferenceGrant", err)
 		return fmt.Errorf("failed to delete ReferenceGrant: %w", err)
+	}
+	
+	return nil
+}
+
+// EnvoyExtensionPolicy Management
+func (k *K8sClient) CreateEnvoyExtensionPolicy(namespace string, envoyExtensionPolicy map[string]interface{}) error {
+	ctx := context.Background()
+	
+	// Convert to unstructured for dynamic client
+	unstructuredPolicy := &unstructured.Unstructured{
+		Object: envoyExtensionPolicy,
+	}
+	
+	_, err := k.dynamicClient.Resource(EnvoyExtensionPolicyGVR).Namespace(namespace).Create(ctx, unstructuredPolicy, metav1.CreateOptions{})
+	if err != nil {
+		k.logError("CreateEnvoyExtensionPolicy", err)
+		return fmt.Errorf("failed to create EnvoyExtensionPolicy: %w", err)
+	}
+	
+	return nil
+}
+
+func (k *K8sClient) DeleteEnvoyExtensionPolicy(namespace, policyName string) error {
+	ctx := context.Background()
+	
+	err := k.dynamicClient.Resource(EnvoyExtensionPolicyGVR).Namespace(namespace).Delete(ctx, policyName, metav1.DeleteOptions{})
+	if err != nil {
+		k.logError("DeleteEnvoyExtensionPolicy", err)
+		return fmt.Errorf("failed to delete EnvoyExtensionPolicy: %w", err)
 	}
 	
 	return nil

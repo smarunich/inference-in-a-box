@@ -35,12 +35,37 @@ const DeveloperConsole = () => {
   const [requestPresets, setRequestPresets] = useState([]);
   const [selectedPreset, setSelectedPreset] = useState('');
   
+  // AI Gateway service state
+  const [aiGatewayService, setAIGatewayService] = useState(null);
+  
   const api = useApi();
   const { user } = useAuth();
 
   useEffect(() => {
     fetchPublishedModels();
+    fetchTestHistory();
+    fetchAIGatewayService();
   }, []);
+
+  const fetchTestHistory = async () => {
+    try {
+      const response = await api.getTestHistory();
+      setTestHistory(response.data.tests || []);
+    } catch (error) {
+      console.error('Error fetching test history:', error);
+      // Don't show error toast for test history as it's not critical
+    }
+  };
+
+  const fetchAIGatewayService = async () => {
+    try {
+      const response = await api.getAIGatewayService();
+      setAIGatewayService(response.data);
+    } catch (error) {
+      console.error('Error fetching AI Gateway service:', error);
+      // Don't show error toast as this is not critical for basic functionality
+    }
+  };
 
   const fetchPublishedModels = async () => {
     try {
@@ -72,14 +97,7 @@ const DeveloperConsole = () => {
           temperature: 0.7
         }
       : {
-          instances: [
-            { 
-              feature1: 1.0, 
-              feature2: 2.0, 
-              feature3: 0.5,
-              feature4: "sample_text"
-            }
-          ]
+          inputs: [[5.1, 3.5, 1.4, 0.2]]
         };
     
     setTestRequest(JSON.stringify(sampleData, null, 2));
@@ -127,17 +145,17 @@ const DeveloperConsole = () => {
         name: 'Single Instance',
         description: 'Basic single prediction',
         data: {
-          instances: [{ feature1: 1.0, feature2: 2.0, feature3: 0.5 }]
+          inputs: [[5.1, 3.5, 1.4, 0.2]]
         }
       },
       {
         name: 'Batch Prediction',
         description: 'Multiple instances',
         data: {
-          instances: [
-            { feature1: 1.0, feature2: 2.0, feature3: 0.5 },
-            { feature1: 2.0, feature2: 1.0, feature3: 1.0 },
-            { feature1: 0.5, feature2: 3.0, feature3: 0.8 }
+          inputs: [
+            [5.1, 3.5, 1.4, 0.2],
+            [4.9, 3.0, 1.4, 0.2],
+            [4.7, 3.2, 1.3, 0.2]
           ]
         }
       }
@@ -192,81 +210,51 @@ const DeveloperConsole = () => {
     }
 
     setTestLoading(true);
-    const startTime = Date.now();
 
     try {
       const requestData = JSON.parse(testRequest);
       
-      // Use custom configuration if enabled
-      const endpoint = useCustomConfig && customEndpoint 
-        ? customEndpoint
-        : selectedModel.modelType === 'openai' 
-          ? `${selectedModel.externalURL}/chat/completions`
-          : `${selectedModel.externalURL}/predict`;
-
-      // Build headers from custom configuration or defaults
-      const headers = useCustomConfig 
-        ? customHeaders.reduce((acc, header) => {
-            if (header.key && header.value) {
-              acc[header.key] = header.value;
-            }
-            return acc;
-          }, {})
-        : {
-            'Content-Type': 'application/json',
-            'X-API-Key': selectedModel.apiKey
-          };
-
-      const method = useCustomConfig ? customMethod : 'POST';
-
-      const response = await fetch(endpoint, {
-        method: method,
-        headers: headers,
-        body: JSON.stringify(requestData)
-      });
-
-      const result = await response.json();
-      const endTime = Date.now();
-      const responseTime = endTime - startTime;
-
-      const testResult = {
-        success: response.ok,
-        data: result,
-        request: requestData,
-        endpoint: endpoint,
-        status: response.status,
-        statusText: response.statusText,
-        responseTime: responseTime,
-        headers: Object.fromEntries(response.headers.entries()),
-        timestamp: new Date().toISOString()
+      // Build test execution request
+      const testExecutionRequest = {
+        modelName: selectedModel.modelName,
+        testData: requestData,
+        useCustomConfig: useCustomConfig,
+        customEndpoint: useCustomConfig ? customEndpoint : '',
+        customMethod: useCustomConfig ? customMethod : 'POST',
+        customHeaders: useCustomConfig ? customHeaders : []
       };
+
+      // Execute test via management service
+      const response = await api.executeTest(testExecutionRequest);
+      const testResult = response.data;
 
       setTestResponse(testResult);
       
       // Add to history
       setTestHistory(prev => [testResult, ...prev.slice(0, 9)]); // Keep last 10 tests
       
-      if (response.ok) {
-        toast.success(`Test completed successfully (${responseTime}ms)`);
+      if (testResult.success) {
+        toast.success(`Test completed successfully (${testResult.responseTime}ms)`);
       } else {
-        toast.error(`Test failed: ${result.error || 'Unknown error'}`);
+        toast.error(`Test failed: ${testResult.error || 'Unknown error'}`);
       }
     } catch (error) {
       const errorResult = {
         success: false,
-        error: error.message,
+        error: error.response?.data?.error || error.message,
         request: testRequest,
         endpoint: selectedModel.modelType === 'openai' 
           ? `${selectedModel.externalURL}/chat/completions`
           : `${selectedModel.externalURL}/predict`,
         status: 'Network Error',
-        responseTime: Date.now() - startTime,
-        timestamp: new Date().toISOString()
+        statusCode: error.response?.status || 0,
+        responseTime: 0,
+        timestamp: new Date()
       };
 
       setTestResponse(errorResult);
       setTestHistory(prev => [errorResult, ...prev.slice(0, 9)]);
-      toast.error(`Network error: ${error.message}`);
+      toast.error(`Network error: ${error.response?.data?.error || error.message}`);
     } finally {
       setTestLoading(false);
     }
@@ -280,17 +268,28 @@ const DeveloperConsole = () => {
   const generateCurlCommand = () => {
     if (!selectedModel || !testRequest.trim()) return '';
 
-    const endpoint = useCustomConfig && customEndpoint 
-      ? customEndpoint
-      : selectedModel.modelType === 'openai' 
-        ? `${selectedModel.externalURL}/chat/completions`
-        : `${selectedModel.externalURL}/predict`;
-
+    let endpoint;
+    let headers;
     const method = useCustomConfig ? customMethod : 'POST';
-    
-    const headers = useCustomConfig 
-      ? customHeaders.filter(h => h.key && h.value).map(h => `  -H "${h.key}: ${h.value}"`).join(' \\\\\n')
-      : `  -H "Content-Type: application/json" \\\\\n  -H "X-API-Key: ${selectedModel.apiKey}"`;
+
+    if (useCustomConfig && customEndpoint) {
+      endpoint = customEndpoint;
+      headers = customHeaders.filter(h => h.key && h.value).map(h => `  -H "${h.key}: ${h.value}"`).join(' \\\\\n');
+    } else if (selectedModel.modelType === 'openai') {
+      // OpenAI models use external URL
+      endpoint = `${selectedModel.externalURL}/chat/completions`;
+      headers = `  -H "Content-Type: application/json" \\\\\n  -H "X-API-Key: ${selectedModel.apiKey}"`;
+    } else {
+      // Traditional models use AI Gateway service IP with Host header
+      if (aiGatewayService && aiGatewayService.clusterIP) {
+        endpoint = `http://${aiGatewayService.clusterIP}/published/models/${selectedModel.modelName}`;
+        headers = `  -H "Host: ${selectedModel.publicHostname}" \\\\\n  -H "x-api-key: ${selectedModel.apiKey}" \\\\\n  -H "Content-Type: application/json"`;
+      } else {
+        // Fallback to external URL if AI Gateway service not available
+        endpoint = `${selectedModel.externalURL}/predict`;
+        headers = `  -H "Content-Type: application/json" \\\\\n  -H "X-API-Key: ${selectedModel.apiKey}"`;
+      }
+    }
 
     return `curl -X ${method} "${endpoint}" \\\\\n${headers} \\\\\n  -d '${testRequest.replace(/'/g, "\\'")}'`;
   };
@@ -298,23 +297,41 @@ const DeveloperConsole = () => {
   const generatePythonCode = () => {
     if (!selectedModel || !testRequest.trim()) return '';
 
-    const endpoint = useCustomConfig && customEndpoint 
-      ? customEndpoint
-      : selectedModel.modelType === 'openai' 
-        ? `${selectedModel.externalURL}/chat/completions`
-        : `${selectedModel.externalURL}/predict`;
-
+    let endpoint;
+    let headers;
     const method = useCustomConfig ? customMethod.toLowerCase() : 'post';
-    
-    const headers = useCustomConfig 
-      ? customHeaders.filter(h => h.key && h.value).reduce((acc, h) => {
-          acc[h.key] = h.value;
-          return acc;
-        }, {})
-      : {
+
+    if (useCustomConfig && customEndpoint) {
+      endpoint = customEndpoint;
+      headers = customHeaders.filter(h => h.key && h.value).reduce((acc, h) => {
+        acc[h.key] = h.value;
+        return acc;
+      }, {});
+    } else if (selectedModel.modelType === 'openai') {
+      // OpenAI models use external URL
+      endpoint = `${selectedModel.externalURL}/chat/completions`;
+      headers = {
+        "Content-Type": "application/json",
+        "X-API-Key": selectedModel.apiKey
+      };
+    } else {
+      // Traditional models use AI Gateway service IP with Host header
+      if (aiGatewayService && aiGatewayService.clusterIP) {
+        endpoint = `http://${aiGatewayService.clusterIP}/published/models/${selectedModel.modelName}`;
+        headers = {
+          "Host": selectedModel.publicHostname,
+          "x-api-key": selectedModel.apiKey,
+          "Content-Type": "application/json"
+        };
+      } else {
+        // Fallback to external URL if AI Gateway service not available
+        endpoint = `${selectedModel.externalURL}/predict`;
+        headers = {
           "Content-Type": "application/json",
           "X-API-Key": selectedModel.apiKey
         };
+      }
+    }
 
     const headersStr = JSON.stringify(headers, null, 4);
 
@@ -344,23 +361,41 @@ else:
   const generateJavaScriptCode = () => {
     if (!selectedModel || !testRequest.trim()) return '';
 
-    const endpoint = useCustomConfig && customEndpoint 
-      ? customEndpoint
-      : selectedModel.modelType === 'openai' 
-        ? `${selectedModel.externalURL}/chat/completions`
-        : `${selectedModel.externalURL}/predict`;
-
+    let endpoint;
+    let headers;
     const method = useCustomConfig ? customMethod : 'POST';
-    
-    const headers = useCustomConfig 
-      ? customHeaders.filter(h => h.key && h.value).reduce((acc, h) => {
-          acc[h.key] = h.value;
-          return acc;
-        }, {})
-      : {
+
+    if (useCustomConfig && customEndpoint) {
+      endpoint = customEndpoint;
+      headers = customHeaders.filter(h => h.key && h.value).reduce((acc, h) => {
+        acc[h.key] = h.value;
+        return acc;
+      }, {});
+    } else if (selectedModel.modelType === 'openai') {
+      // OpenAI models use external URL
+      endpoint = `${selectedModel.externalURL}/chat/completions`;
+      headers = {
+        "Content-Type": "application/json",
+        "X-API-Key": selectedModel.apiKey
+      };
+    } else {
+      // Traditional models use AI Gateway service IP with Host header
+      if (aiGatewayService && aiGatewayService.clusterIP) {
+        endpoint = `http://${aiGatewayService.clusterIP}/published/models/${selectedModel.modelName}`;
+        headers = {
+          "Host": selectedModel.publicHostname,
+          "x-api-key": selectedModel.apiKey,
+          "Content-Type": "application/json"
+        };
+      } else {
+        // Fallback to external URL if AI Gateway service not available
+        endpoint = `${selectedModel.externalURL}/predict`;
+        headers = {
           "Content-Type": "application/json",
           "X-API-Key": selectedModel.apiKey
         };
+      }
+    }
 
     const headersStr = JSON.stringify(headers, null, 4);
 
@@ -420,7 +455,7 @@ fetch(url, {
           Developer Console
         </h2>
         <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
-          Test your published models with real external API calls
+          Test your published models through the local management service
         </div>
       </div>
 
