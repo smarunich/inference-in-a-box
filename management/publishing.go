@@ -1065,6 +1065,11 @@ func (s *PublishingService) createAIGatewayRoute(namespace, modelName, routeName
 		return "", fmt.Errorf("failed to create ReferenceGrant: %w", err)
 	}
 
+	// Create EnvoyExtensionPolicy for URL rewriting and host header modification
+	if err := s.createAIGatewayEnvoyExtensionPolicy(namespace, modelName, backendName, hostname, kserveHostname); err != nil {
+		return "", fmt.Errorf("failed to create EnvoyExtensionPolicy: %w", err)
+	}
+
 	// Update Gateway to include this hostname
 	if err := s.updateGatewayForHostname(hostname); err != nil {
 		return "", fmt.Errorf("failed to update gateway for hostname %s: %w", hostname, err)
@@ -1108,12 +1113,8 @@ func (s *PublishingService) createAIGatewayRoute(namespace, modelName, routeName
 									"name":  "x-ai-eg-model",
 									"value": modelName,
 								},
-								// Add x-api-key header requirement (same as HTTPRoute)
-								map[string]interface{}{
-									"name": "x-api-key",
-									"type":  "RegularExpression",
-									"value": ".*",
-								},
+								// Removed x-api-key header match - AIGateway handles auth differently
+								// Authentication is handled at the gateway level
 							},
 						},
 					},
@@ -1563,6 +1564,7 @@ func (s *PublishingService) cleanupGatewayConfiguration(namespace, modelName str
 	routeName := fmt.Sprintf("published-model-%s-%s", namespace, modelName)
 	backendName := fmt.Sprintf("%s-backend", modelName)
 	grantName := fmt.Sprintf("published-model-grant-%s-%s", namespace, modelName)
+	policyName := fmt.Sprintf("published-model-policy-%s-%s", namespace, modelName)
 	
 	// Delete HTTPRoute
 	if err := s.k8sClient.DeleteHTTPRoute("envoy-gateway-system", routeName); err != nil {
@@ -1579,9 +1581,14 @@ func (s *PublishingService) cleanupGatewayConfiguration(namespace, modelName str
 		log.Printf("Failed to cleanup AIServiceBackend %s: %v", backendName, err)
 	}
 	
-	// Delete ReferenceGrant
-	if err := s.k8sClient.DeleteReferenceGrant(namespace, grantName); err != nil {
-		log.Printf("Failed to cleanup ReferenceGrant %s/%s: %v", namespace, grantName, err)
+	// Delete EnvoyExtensionPolicy
+	if err := s.k8sClient.DeleteEnvoyExtensionPolicy("envoy-gateway-system", policyName); err != nil {
+		log.Printf("Failed to cleanup EnvoyExtensionPolicy %s: %v", policyName, err)
+	}
+	
+	// Delete ReferenceGrant (now in istio-system)
+	if err := s.k8sClient.DeleteReferenceGrant("istio-system", grantName); err != nil {
+		log.Printf("Failed to cleanup ReferenceGrant istio-system/%s: %v", grantName, err)
 	}
 }
 
@@ -1601,7 +1608,8 @@ func (s *PublishingService) cleanupPublishedModelMetadata(namespace, modelName s
 
 
 func (s *PublishingService) createAIServiceBackend(namespace, modelName, backendName, kserveHostname string) error {
-	// Create AIServiceBackend resource that routes through istio-ingressgateway to KServe
+	// Create AIServiceBackend resource that routes through istio-ingressgateway
+	// Same as HTTPRoute but for AI Gateway - requires EnvoyExtensionPolicy for URL rewriting
 	aiServiceBackend := map[string]interface{}{
 		"apiVersion": "aigateway.envoyproxy.io/v1alpha1",
 		"kind":       "AIServiceBackend",
@@ -1620,7 +1628,7 @@ func (s *PublishingService) createAIServiceBackend(namespace, modelName, backend
 				"name": "OpenAI",
 			},
 			// Route through istio-ingressgateway like HTTPRoute
-			// The AI Gateway handles OpenAI protocol transformation
+			// URL rewriting and host header modification handled by EnvoyExtensionPolicy
 			"backendRef": map[string]interface{}{
 				"name":      "istio-ingressgateway",
 				"namespace": "istio-system",
@@ -1638,14 +1646,16 @@ func (s *PublishingService) createAIServiceBackend(namespace, modelName, backend
 }
 
 func (s *PublishingService) createReferenceGrant(namespace, modelName string) error {
-	// Create ReferenceGrant for cross-namespace access
+	// Create ReferenceGrant for cross-namespace access from envoy-gateway-system to istio-system
+	// This allows AIServiceBackend to access istio-ingressgateway service
 	grantName := fmt.Sprintf("published-model-grant-%s-%s", namespace, modelName)
+	
 	referenceGrant := map[string]interface{}{
 		"apiVersion": "gateway.networking.k8s.io/v1beta1",
 		"kind":       "ReferenceGrant",
 		"metadata": map[string]interface{}{
 			"name":      grantName,
-			"namespace": namespace,
+			"namespace": "istio-system",
 			"labels": map[string]interface{}{
 				"app":        "published-model",
 				"model-name": modelName,
@@ -1664,17 +1674,81 @@ func (s *PublishingService) createReferenceGrant(namespace, modelName string) er
 				map[string]interface{}{
 					"group": "",
 					"kind":  "Service",
-					"name":  fmt.Sprintf("%s-predictor", modelName),
+					"name":  "istio-ingressgateway",
 				},
 			},
 		},
 	}
 
-	return s.k8sClient.CreateReferenceGrant(namespace, referenceGrant)
+	return s.k8sClient.CreateReferenceGrant("istio-system", referenceGrant)
 }
 
-// Removed createAIGatewayExtensionPolicy - using simplified AIGatewayRoute approach
-// The AI Gateway handles OpenAI protocol transformation automatically
+// createAIGatewayEnvoyExtensionPolicy creates EnvoyExtensionPolicy for URL rewriting and host header modification
+// This provides the same functionality as HTTPRoute filters but for AI Gateway
+func (s *PublishingService) createAIGatewayEnvoyExtensionPolicy(namespace, modelName, backendName, hostname, kserveHostname string) error {
+	policyName := fmt.Sprintf("published-model-policy-%s-%s", namespace, modelName)
+	kserveModelPath := s.generateKServeModelPath(modelName)
+	
+	// Lua script to handle URL rewriting and host header modification
+	// This mimics the HTTPRoute filter behavior for AI Gateway
+	luaScript := fmt.Sprintf(`
+-- URL rewriting and host header modification for AI Gateway
+-- Equivalent to HTTPRoute filters but for OpenAI schema models
+
+function envoy_on_request(request_handle)
+  -- Get current path
+  local path = request_handle:headers():get(":path")
+  
+  -- Rewrite host header to KServe hostname (same as HTTPRoute)
+  request_handle:headers():replace("host", "%s")
+  
+  -- For OpenAI chat completions, rewrite path to KServe model endpoint
+  if path and string.match(path, "/v1/chat/completions") then
+    request_handle:headers():replace(":path", "%s")
+  end
+  
+  -- Add headers for routing context (same as HTTPRoute)
+  request_handle:headers():add("x-tenant", "%s")
+  request_handle:headers():add("x-model-name", "%s")
+  request_handle:headers():add("x-gateway", "published-model")
+  request_handle:headers():add("x-hostname", "%s")
+  request_handle:headers():add("x-model-type", "openai")
+end
+`, kserveHostname, kserveModelPath, namespace, modelName, hostname)
+	
+	// Create EnvoyExtensionPolicy with Lua script
+	envoyExtensionPolicy := map[string]interface{}{
+		"apiVersion": "gateway.envoyproxy.io/v1alpha1",
+		"kind":       "EnvoyExtensionPolicy",
+		"metadata": map[string]interface{}{
+			"name":      policyName,
+			"namespace": "envoy-gateway-system",
+			"labels": map[string]interface{}{
+				"app":        "published-model",
+				"model-name": modelName,
+				"tenant":     namespace,
+				"type":       "openai",
+			},
+		},
+		"spec": map[string]interface{}{
+			"targetRefs": []interface{}{
+				map[string]interface{}{
+					"group":     "aigateway.envoyproxy.io",
+					"kind":      "AIServiceBackend",
+					"name":      backendName,
+				},
+			},
+			"lua": []interface{}{
+				map[string]interface{}{
+					"type":   "Inline",
+					"inline": luaScript,
+				},
+			},
+		},
+	}
+	
+	return s.k8sClient.CreateEnvoyExtensionPolicy("envoy-gateway-system", envoyExtensionPolicy)
+}
 
 // updateGatewayForHostname intelligently updates the Gateway resource for hostname support
 func (s *PublishingService) updateGatewayForHostname(hostname string) error {
