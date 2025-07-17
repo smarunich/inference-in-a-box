@@ -1089,7 +1089,7 @@ func (s *PublishingService) createAIGatewayRoute(namespace, modelName, routeName
 			"schema": map[string]interface{}{
 				"name": "OpenAI",
 			},
-			"parentRefs": []interface{}{
+			"targetRefs": []interface{}{
 				map[string]interface{}{
 					"name":      "ai-inference-gateway",
 					"namespace": "envoy-gateway-system",
