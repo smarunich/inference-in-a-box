@@ -28,7 +28,7 @@ rules:
   resources: ["virtualservices", "gateways"]
   verbs: ["get", "list", "create", "update", "patch", "delete"]
 - apiGroups: ["gateway.envoyproxy.io"] 
-  resources: ["backendtrafficpolicies","backends"]
+  resources: ["backendtrafficpolicies","backends","envoyextensionpolicies"]
   verbs: ["get", "list", "create", "update", "patch", "delete"]
 - apiGroups: ["aigateway.envoyproxy.io"]
   resources: ["aigatewayroutes","aiservicebackends"]

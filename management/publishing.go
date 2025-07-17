@@ -1684,13 +1684,15 @@ func (s *PublishingService) createReferenceGrant(namespace, modelName string) er
 }
 
 // createAIGatewayEnvoyExtensionPolicy creates EnvoyExtensionPolicy for URL rewriting and host header modification
-// This provides the same functionality as HTTPRoute filters but for AI Gateway
+// This targets the HTTPRoute that will be created after AIGatewayRoute with the same name
+// The policy provides the same functionality as HTTPRoute filters but for AI Gateway routing
 func (s *PublishingService) createAIGatewayEnvoyExtensionPolicy(namespace, modelName, backendName, hostname, kserveHostname string) error {
 	policyName := fmt.Sprintf("published-model-policy-%s-%s", namespace, modelName)
+	routeName := fmt.Sprintf("published-model-%s-%s", namespace, modelName)
 	kserveModelPath := s.generateKServeModelPath(modelName)
 	
 	// Lua script to handle URL rewriting and host header modification
-	// This mimics the HTTPRoute filter behavior for AI Gateway
+	// This provides HTTPRoute-equivalent functionality for AI Gateway traffic
 	luaScript := fmt.Sprintf(`
 -- URL rewriting and host header modification for AI Gateway
 -- Equivalent to HTTPRoute filters but for OpenAI schema models
@@ -1699,24 +1701,26 @@ function envoy_on_request(request_handle)
   -- Get current path
   local path = request_handle:headers():get(":path")
   
-  -- Rewrite host header to KServe hostname (same as HTTPRoute)
-  request_handle:headers():replace("host", "%s")
-  
-  -- For OpenAI chat completions, rewrite path to KServe model endpoint
-  if path and string.match(path, "/v1/chat/completions") then
+  -- Only apply transformations for OpenAI API requests
+  if path and (string.match(path, "/v1/chat/completions") or string.match(path, "/v1/completions")) then
+    -- Rewrite host header to KServe hostname (same as HTTPRoute)
+    request_handle:headers():replace("host", "%s")
+    
+    -- Rewrite path to KServe model endpoint
     request_handle:headers():replace(":path", "%s")
+    
+    -- Add headers for routing context (same as HTTPRoute)
+    request_handle:headers():add("x-tenant", "%s")
+    request_handle:headers():add("x-model-name", "%s")
+    request_handle:headers():add("x-gateway", "published-model")
+    request_handle:headers():add("x-hostname", "%s")
+    request_handle:headers():add("x-model-type", "openai")
   end
-  
-  -- Add headers for routing context (same as HTTPRoute)
-  request_handle:headers():add("x-tenant", "%s")
-  request_handle:headers():add("x-model-name", "%s")
-  request_handle:headers():add("x-gateway", "published-model")
-  request_handle:headers():add("x-hostname", "%s")
-  request_handle:headers():add("x-model-type", "openai")
 end
 `, kserveHostname, kserveModelPath, namespace, modelName, hostname)
 	
-	// Create EnvoyExtensionPolicy with Lua script
+	// Create EnvoyExtensionPolicy targeting the HTTPRoute (not AIServiceBackend)
+	// The HTTPRoute will be created after AIGatewayRoute with the same name
 	envoyExtensionPolicy := map[string]interface{}{
 		"apiVersion": "gateway.envoyproxy.io/v1alpha1",
 		"kind":       "EnvoyExtensionPolicy",
@@ -1733,9 +1737,9 @@ end
 		"spec": map[string]interface{}{
 			"targetRefs": []interface{}{
 				map[string]interface{}{
-					"group":     "aigateway.envoyproxy.io",
-					"kind":      "AIServiceBackend",
-					"name":      backendName,
+					"group":     "gateway.networking.k8s.io",
+					"kind":      "HTTPRoute",
+					"name":      routeName,
 				},
 			},
 			"lua": []interface{}{
