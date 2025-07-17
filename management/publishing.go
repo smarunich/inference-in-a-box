@@ -896,6 +896,12 @@ func (s *PublishingService) createHTTPRoute(namespace, modelName, routeName stri
 		hostname = "api.router.inference-in-a-box"
 	}
 	
+	// Get KServe hostname from InferenceService
+	kserveHostname, err := s.generateKServeHostname(modelName, namespace)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate KServe hostname: %w", err)
+	}
+	
 	// Create HTTPRoute configuration
 	httpRoute := map[string]interface{}{
 		"apiVersion": "gateway.networking.k8s.io/v1",
@@ -936,6 +942,16 @@ func (s *PublishingService) createHTTPRoute(namespace, modelName, routeName stri
 						},
 					},
 					"filters": []interface{}{
+						map[string]interface{}{
+							"type": "URLRewrite",
+							"urlRewrite": map[string]interface{}{
+								"hostname": kserveHostname,
+								"path": map[string]interface{}{
+									"type":            "ReplaceFullPath",
+									"replaceFullPath": s.generateKServeModelPath(modelName),
+								},
+							},
+						},
 						map[string]interface{}{
 							"type": "RequestHeaderModifier",
 							"requestHeaderModifier": map[string]interface{}{
@@ -984,6 +1000,39 @@ func (s *PublishingService) createHTTPRoute(namespace, modelName, routeName stri
 	
 	// Return the external URL using the configured hostname
 	return fmt.Sprintf("https://%s%s", hostname, externalPath), nil
+}
+
+// generateKServeHostname generates the KServe predictor hostname for a model by looking up the InferenceService
+func (s *PublishingService) generateKServeHostname(modelName, namespace string) (string, error) {
+	// Get the InferenceService to extract the URL
+	inferenceService, err := s.k8sClient.GetInferenceService(namespace, modelName)
+	if err != nil {
+		return "", fmt.Errorf("failed to get InferenceService: %w", err)
+	}
+	
+	// Extract URL from status
+	if status, ok := inferenceService["status"].(map[string]interface{}); ok {
+		if url, ok := status["url"].(string); ok {
+			// Parse the URL to extract hostname
+			// Format: http://model-name.namespace.127.0.0.1.sslip.io
+			// We need to remove the protocol and return just the hostname
+			if len(url) > 7 && url[:7] == "http://" {
+				return url[7:], nil
+			}
+			if len(url) > 8 && url[:8] == "https://" {
+				return url[8:], nil
+			}
+			return url, nil
+		}
+	}
+	
+	// Fallback to constructed hostname if status URL is not available
+	return fmt.Sprintf("%s-predictor.%s.127.0.0.1.sslip.io", modelName, namespace), nil
+}
+
+// generateKServeModelPath generates the KServe model endpoint path for a model
+func (s *PublishingService) generateKServeModelPath(modelName string) string {
+	return fmt.Sprintf("/v1/models/%s:predict", modelName)
 }
 
 func (s *PublishingService) createAIGatewayRoute(namespace, modelName, routeName string, config PublishConfig) (string, error) {
