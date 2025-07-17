@@ -121,7 +121,7 @@ graph TB
 ### Gateway & Security Components
 
 #### Envoy Gateway
-- **Version**: 1.4.1
+- **Version**: 1.4.2
 - **Role**: API Gateway platform built on Envoy proxy
 - **Key Features**: Traffic management, security, observability
 - **Architecture**: Kubernetes-native gateway API implementation

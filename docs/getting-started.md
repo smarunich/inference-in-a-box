@@ -36,7 +36,7 @@ This script will:
 - Install Knative Serving (v1.18.1)
 - Install KServe (v0.15.2)
 - Deploy the observability stack (Prometheus, Grafana, Kiali)
-- Deploy Envoy Gateway (v1.4.1) and Envoy AI Gateway (v0.2.1)
+- Deploy Envoy Gateway (v1.4.2) and Envoy AI Gateway (v0.2.1)
 - Deploy JWT server for authentication
 - Configure TLS certificates
 - Setup multi-tenant namespaces and deploy sample models

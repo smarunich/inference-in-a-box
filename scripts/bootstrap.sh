@@ -26,7 +26,7 @@ GRAFANA_VERSION="12.0.2"
 JAEGER_VERSION="3.4.1"         
 KIALI_VERSION="2.11.0"           
 KNATIVE_VERSION="1.18.1"         
-ENVOY_GATEWAY_VERSION="1.4.1"     # Required for Envoy AI Gateway
+ENVOY_GATEWAY_VERSION="1.4.2"     # Required for Envoy AI Gateway
 ENVOY_AI_GATEWAY_VERSION="0.2.1"  
 
 # Logging function
@@ -482,11 +482,7 @@ install_envoy_ai_gateway() {
 
     kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/security/jwt-security-policy.yaml
     #kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/security/backend-security-policy.yaml
-    
-    # Apply Routing configuration
-    kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/routing/httproute.yaml
-    #kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/routing/ai-gatewayroute.yaml
-    
+
     # Apply Traffic policies
     kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/policies/rate-limiting.yaml
     
