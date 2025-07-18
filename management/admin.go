@@ -479,17 +479,49 @@ func (s *AdminService) ExecuteKubectl(c *gin.Context) {
 
 // GetAIGatewayService handles GET /api/admin/ai-gateway-service
 func (s *AdminService) GetAIGatewayService(c *gin.Context) {
-	// Get the AI Gateway service (EnvoyGateway service)
+	// First try to get istio-ingressgateway service (preferred for DNS resolution)
+	istioServices, err := s.k8sClient.GetServices("istio-system")
+	if err == nil {
+		// Find the istio-ingressgateway service
+		for _, service := range istioServices {
+			if service.Name == "istio-ingressgateway" {
+				serviceInfo := map[string]interface{}{
+					"name":      service.Name,
+					"namespace": service.Namespace,
+					"type":      string(service.Spec.Type),
+					"clusterIP": service.Spec.ClusterIP,
+					"ports":     service.Spec.Ports,
+					"gateway":   "istio-ingressgateway",
+				}
+
+				// Add external IP if available
+				if len(service.Status.LoadBalancer.Ingress) > 0 {
+					ingress := service.Status.LoadBalancer.Ingress[0]
+					if ingress.IP != "" {
+						serviceInfo["externalIP"] = ingress.IP
+					}
+					if ingress.Hostname != "" {
+						serviceInfo["externalHostname"] = ingress.Hostname
+					}
+				}
+
+				c.JSON(http.StatusOK, serviceInfo)
+				return
+			}
+		}
+	}
+
+	// Fallback to envoy-gateway service
 	services, err := s.k8sClient.GetServices("envoy-gateway-system")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{
-			Error:   "Failed to get services",
+			Error:   "Failed to get gateway services",
 			Details: err.Error(),
 		})
 		return
 	}
 
-	// Find the gateway service
+	// Find the envoy-gateway service
 	var gatewayService *corev1.Service
 	for _, service := range services {
 		if service.Name == "envoy-gateway" {
@@ -500,7 +532,7 @@ func (s *AdminService) GetAIGatewayService(c *gin.Context) {
 
 	if gatewayService == nil {
 		c.JSON(http.StatusNotFound, ErrorResponse{
-			Error: "AI Gateway service not found",
+			Error: "No gateway service found (tried istio-ingressgateway and envoy-gateway)",
 		})
 		return
 	}
@@ -512,6 +544,7 @@ func (s *AdminService) GetAIGatewayService(c *gin.Context) {
 		"type":      string(gatewayService.Spec.Type),
 		"clusterIP": gatewayService.Spec.ClusterIP,
 		"ports":     gatewayService.Spec.Ports,
+		"gateway":   "envoy-gateway",
 	}
 
 	// Add external IP if available

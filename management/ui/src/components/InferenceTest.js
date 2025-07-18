@@ -3,7 +3,7 @@ import { useApi } from '../contexts/ApiContext';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
 import JsonView from '@uiw/react-json-view';
-import { Play, Copy, Settings, Globe, Plus, Minus } from 'lucide-react';
+import { Play, Copy, Settings, Globe, Plus, Minus, Server } from 'lucide-react';
 
 const InferenceTest = () => {
   const [models, setModels] = useState([]);
@@ -13,6 +13,7 @@ const InferenceTest = () => {
   const [loading, setLoading] = useState(false);
   const [loadingModels, setLoadingModels] = useState(true);
   const [showConnectionSettings, setShowConnectionSettings] = useState(false);
+  const [gatewayInfo, setGatewayInfo] = useState(null);
   
   // Connection settings
   const [connectionSettings, setConnectionSettings] = useState({
@@ -21,7 +22,8 @@ const InferenceTest = () => {
     port: '',
     path: '',
     protocol: 'http',
-    headers: [{ key: 'Content-Type', value: 'application/json' }]
+    headers: [{ key: 'Content-Type', value: 'application/json' }],
+    dnsResolve: []
   });
   
   const api = useApi();
@@ -29,6 +31,7 @@ const InferenceTest = () => {
 
   useEffect(() => {
     fetchModels();
+    fetchGatewayInfo();
   }, []);
 
   useEffect(() => {
@@ -51,7 +54,8 @@ const InferenceTest = () => {
           headers: [
             { key: 'Content-Type', value: 'application/json' },
             { key: 'Authorization', value: `Bearer ${user?.token || 'your-token-here'}` }
-          ]
+          ],
+          dnsResolve: prev.dnsResolve || []
         }));
       } catch (error) {
         console.error('Error parsing model URL:', error);
@@ -65,7 +69,8 @@ const InferenceTest = () => {
           headers: [
             { key: 'Content-Type', value: 'application/json' },
             { key: 'Authorization', value: `Bearer ${user?.token || 'your-token-here'}` }
-          ]
+          ],
+          dnsResolve: prev.dnsResolve || []
         }));
       }
     }
@@ -84,6 +89,16 @@ const InferenceTest = () => {
       console.error('Error fetching models:', error);
     } finally {
       setLoadingModels(false);
+    }
+  };
+
+  const fetchGatewayInfo = async () => {
+    try {
+      const response = await api.getAIGatewayService();
+      setGatewayInfo(response.data);
+    } catch (error) {
+      console.error('Error fetching gateway info:', error);
+      setGatewayInfo(null);
     }
   };
 
@@ -106,6 +121,38 @@ const InferenceTest = () => {
       ...prev,
       headers: prev.headers.map((header, i) => 
         i === index ? { ...header, [field]: value } : header
+      )
+    }));
+  };
+
+  const addDnsResolve = () => {
+    // Get default values from current connection settings
+    const defaultHost = connectionSettings.host || '';
+    const defaultPort = connectionSettings.port || '443';
+    const defaultAddress = gatewayInfo?.clusterIP || '';
+    
+    setConnectionSettings(prev => ({
+      ...prev,
+      dnsResolve: [...prev.dnsResolve, { 
+        host: defaultHost, 
+        port: defaultPort, 
+        address: defaultAddress 
+      }]
+    }));
+  };
+
+  const removeDnsResolve = (index) => {
+    setConnectionSettings(prev => ({
+      ...prev,
+      dnsResolve: prev.dnsResolve.filter((_, i) => i !== index)
+    }));
+  };
+
+  const updateDnsResolve = (index, field, value) => {
+    setConnectionSettings(prev => ({
+      ...prev,
+      dnsResolve: prev.dnsResolve.map((resolve, i) => 
+        i === index ? { ...resolve, [field]: value } : resolve
       )
     }));
   };
@@ -394,6 +441,128 @@ const InferenceTest = () => {
                   </div>
 
                   <div className="form-group">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <label className="form-label">
+                        <Server size={14} style={{ marginRight: '0.25rem', display: 'inline' }} />
+                        DNS Resolution (like curl --resolve)
+                      </label>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={addDnsResolve}
+                      >
+                        <Plus size={14} />
+                        Add DNS Override
+                      </button>
+                    </div>
+                    <small style={{ color: '#6b7280', marginBottom: '0.5rem', display: 'block' }}>
+                      Override DNS resolution for testing. Click "Add DNS Override" to route traffic through the gateway for published models.
+                    </small>
+                    
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      {connectionSettings.dnsResolve.length === 0 ? (
+                        <div style={{ 
+                          padding: '0.75rem', 
+                          fontSize: '0.75rem',
+                          color: '#6b7280',
+                          textAlign: 'center',
+                          fontStyle: 'italic',
+                          backgroundColor: '#f9fafb',
+                          border: '1px dashed #d1d5db',
+                          borderRadius: '6px'
+                        }}>
+                          {gatewayInfo?.clusterIP ? (
+                            <div>
+                              <div>Click "Add DNS Override" to route requests through the gateway</div>
+                              <div style={{ marginTop: '0.25rem', fontSize: '0.625rem', color: '#9ca3af' }}>
+                                (Will use hostname from connection settings and gateway IP)
+                              </div>
+                            </div>
+                          ) : (
+                            <div>Loading gateway information...</div>
+                          )}
+                        </div>
+                      ) : (
+                        connectionSettings.dnsResolve.map((resolve, index) => {
+                          const isHostDefault = resolve.host === connectionSettings.host && resolve.host !== '';
+                          const isPortDefault = resolve.port === (connectionSettings.port || '443') && resolve.port !== '';
+                          const isAddressDefault = resolve.address === gatewayInfo?.clusterIP && resolve.address !== '';
+                          const hasDefaults = isHostDefault || isPortDefault || isAddressDefault;
+
+                          return (
+                            <div key={index} style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                <input
+                                  type="text"
+                                  value={resolve.host}
+                                  onChange={(e) => updateDnsResolve(index, 'host', e.target.value)}
+                                  className="form-input"
+                                  placeholder="Host (e.g., api.router.inference-in-a-box)"
+                                  style={{ 
+                                    flex: 2,
+                                    ...(isHostDefault && {
+                                      backgroundColor: '#f9fafb',
+                                      fontStyle: 'italic',
+                                      color: '#6b7280'
+                                    })
+                                  }}
+                                />
+                                <input
+                                  type="text"
+                                  value={resolve.port}
+                                  onChange={(e) => updateDnsResolve(index, 'port', e.target.value)}
+                                  className="form-input"
+                                  placeholder="Port (e.g., 443)"
+                                  style={{ 
+                                    flex: 1,
+                                    ...(isPortDefault && {
+                                      backgroundColor: '#f9fafb',
+                                      fontStyle: 'italic',
+                                      color: '#6b7280'
+                                    })
+                                  }}
+                                />
+                                <input
+                                  type="text"
+                                  value={resolve.address}
+                                  onChange={(e) => updateDnsResolve(index, 'address', e.target.value)}
+                                  className="form-input"
+                                  placeholder="Gateway IP (auto-detected)"
+                                  style={{ 
+                                    flex: 2,
+                                    ...(isAddressDefault && {
+                                      backgroundColor: '#f9fafb',
+                                      fontStyle: 'italic',
+                                      color: '#6b7280'
+                                    })
+                                  }}
+                                />
+                                <button
+                                  type="button"
+                                  className="btn btn-danger btn-sm"
+                                  onClick={() => removeDnsResolve(index)}
+                                >
+                                  <Minus size={14} />
+                                </button>
+                              </div>
+                              {hasDefaults && (
+                                <div style={{ 
+                                  fontSize: '0.625rem', 
+                                  color: '#9ca3af', 
+                                  fontStyle: 'italic',
+                                  paddingLeft: '0.5rem'
+                                }}>
+                                  Using default values (can be customized)
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="form-group">
                     <label className="form-label">Full URL Preview</label>
                     <div style={{ 
                       padding: '0.75rem', 
@@ -404,6 +573,16 @@ const InferenceTest = () => {
                       wordBreak: 'break-all'
                     }}>
                       {buildCustomUrl()}
+                      {connectionSettings.dnsResolve.length > 0 && (
+                        <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: '#4b5563' }}>
+                          <strong>DNS Overrides:</strong>
+                          {connectionSettings.dnsResolve.map((resolve, index) => (
+                            resolve.host && resolve.port && resolve.address && (
+                              <div key={index}>→ {resolve.host}:{resolve.port} will resolve to {resolve.address}:{resolve.port}</div>
+                            )
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </>

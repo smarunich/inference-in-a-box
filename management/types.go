@@ -125,19 +125,27 @@ type PredictRequest struct {
 
 // ConnectionSettings represents custom connection settings
 type ConnectionSettings struct {
-	UseCustom bool            `json:"useCustom"`
-	Protocol  string          `json:"protocol,omitempty"`
-	Host      string          `json:"host,omitempty"`
-	Port      string          `json:"port,omitempty"`
-	Path      string          `json:"path,omitempty"`
-	Headers   []HeaderSetting `json:"headers,omitempty"`
-	Namespace string          `json:"namespace,omitempty"`
+	UseCustom  bool            `json:"useCustom"`
+	Protocol   string          `json:"protocol,omitempty"`
+	Host       string          `json:"host,omitempty"`
+	Port       string          `json:"port,omitempty"`
+	Path       string          `json:"path,omitempty"`
+	Headers    []HeaderSetting `json:"headers,omitempty"`
+	Namespace  string          `json:"namespace,omitempty"`
+	DNSResolve []DNSResolve    `json:"dnsResolve,omitempty"`
 }
 
 // HeaderSetting represents a header key-value pair
 type HeaderSetting struct {
 	Key   string `json:"key"`
 	Value string `json:"value"`
+}
+
+// DNSResolve represents a DNS resolution override (like curl --resolve)
+type DNSResolve struct {
+	Host    string `json:"host"`
+	Port    string `json:"port"`
+	Address string `json:"address"`
 }
 
 // LogsResponse represents logs response
@@ -393,12 +401,13 @@ type RotateAPIKeyResponse struct {
 
 // Test execution types for DeveloperConsole
 type TestExecutionRequest struct {
-	ModelName         string            `json:"modelName" binding:"required"`
-	TestData          interface{}       `json:"testData" binding:"required"`
-	CustomEndpoint    string            `json:"customEndpoint,omitempty"`
-	CustomHeaders     []HeaderSetting   `json:"customHeaders,omitempty"`
-	CustomMethod      string            `json:"customMethod,omitempty"`
-	UseCustomConfig   bool              `json:"useCustomConfig"`
+	ModelName         string             `json:"modelName" binding:"required"`
+	TestData          interface{}        `json:"testData" binding:"required"`
+	CustomEndpoint    string             `json:"customEndpoint,omitempty"`
+	CustomHeaders     []HeaderSetting    `json:"customHeaders,omitempty"`
+	CustomMethod      string             `json:"customMethod,omitempty"`
+	UseCustomConfig   bool               `json:"useCustomConfig"`
+	ConnectionSettings *ConnectionSettings `json:"connectionSettings,omitempty"`
 }
 
 type TestExecutionResponse struct {

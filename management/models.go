@@ -1,11 +1,16 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -421,8 +426,18 @@ func (s *ModelService) PredictModel(c *gin.Context) {
 		return
 	}
 
+	// Marshal input data
+	inputDataJSON, err := json.Marshal(req.InputData)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{
+			Error:   "Invalid input data",
+			Details: err.Error(),
+		})
+		return
+	}
+
 	var modelUrl string
-	var cmd string
+	var fullPath string
 
 	if req.ConnectionSettings != nil && req.ConnectionSettings.UseCustom {
 		// Use custom connection settings
@@ -440,33 +455,12 @@ func (s *ModelService) PredictModel(c *gin.Context) {
 			portPart = ":" + port
 		}
 
-		modelUrl = fmt.Sprintf("%s://%s%s", protocol, host, portPart)
-
 		if path == "" {
 			path = fmt.Sprintf("/v1/models/%s:predict", modelName)
 		}
 
-		// Build headers
-		headers := "-H \"Content-Type: application/json\""
-		if req.ConnectionSettings.Headers != nil {
-			for _, header := range req.ConnectionSettings.Headers {
-				if header.Key != "" && header.Value != "" {
-					headers += fmt.Sprintf(" -H \"%s: %s\"", header.Key, header.Value)
-				}
-			}
-		}
-
-		// Marshal input data
-		inputDataJSON, err := json.Marshal(req.InputData)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, ErrorResponse{
-				Error:   "Invalid input data",
-				Details: err.Error(),
-			})
-			return
-		}
-
-		cmd = fmt.Sprintf("curl -s -X POST %s%s %s -d '%s'", modelUrl, path, headers, string(inputDataJSON))
+		modelUrl = fmt.Sprintf("%s://%s%s", protocol, host, portPart)
+		fullPath = path
 	} else {
 		// Default behavior - get model URL from InferenceService
 		tenant := u.Tenant
@@ -504,41 +498,127 @@ func (s *ModelService) PredictModel(c *gin.Context) {
 			return
 		}
 
-		// Marshal input data
-		inputDataJSON, err := json.Marshal(req.InputData)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, ErrorResponse{
-				Error:   "Invalid input data",
-				Details: err.Error(),
-			})
-			return
-		}
-
-		cmd = fmt.Sprintf("curl -s -X POST %s/v1/models/%s:predict -H \"Content-Type: application/json\" -d '%s'",
-			modelUrl, modelName, string(inputDataJSON))
+		fullPath = fmt.Sprintf("/v1/models/%s:predict", modelName)
 	}
 
-	// Execute prediction request
-	result, err := ExecuteCommand(cmd)
+	// Build full URL
+	requestURL := modelUrl + fullPath
+
+	// Create HTTP request
+	httpReq, err := http.NewRequest("POST", requestURL, bytes.NewBuffer(inputDataJSON))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{
-			Error:   "Failed to make prediction",
+			Error:   "Failed to create HTTP request",
 			Details: err.Error(),
+		})
+		return
+	}
+
+	// Set default Content-Type header
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	// Add custom headers if provided
+	if req.ConnectionSettings != nil && req.ConnectionSettings.Headers != nil {
+		for _, header := range req.ConnectionSettings.Headers {
+			if header.Key != "" && header.Value != "" {
+				if strings.ToLower(header.Key) == "host" {
+					// Special handling for Host header
+					httpReq.Host = header.Value
+				} else {
+					httpReq.Header.Set(header.Key, header.Value)
+				}
+			}
+		}
+	}
+
+	// Create HTTP client with custom DNS resolution if needed
+	client := s.createHTTPClient(req.ConnectionSettings)
+
+	// Execute HTTP request
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{
+			Error:   "Failed to make prediction request",
+			Details: err.Error(),
+		})
+		return
+	}
+	defer resp.Body.Close()
+
+	// Read response body
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{
+			Error:   "Failed to read response",
+			Details: err.Error(),
+		})
+		return
+	}
+
+	// Check if response status is not successful
+	if resp.StatusCode >= 400 {
+		c.JSON(http.StatusBadGateway, ErrorResponse{
+			Error:   fmt.Sprintf("Model prediction failed with status %d", resp.StatusCode),
+			Details: string(responseBody),
 		})
 		return
 	}
 
 	// Parse prediction result
 	var prediction interface{}
-	if err := json.Unmarshal([]byte(result), &prediction); err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{
-			Error:   "Failed to parse prediction response",
-			Details: err.Error(),
+	if err := json.Unmarshal(responseBody, &prediction); err != nil {
+		// If JSON parsing fails, return raw response
+		c.JSON(http.StatusOK, map[string]interface{}{
+			"raw_response": string(responseBody),
+			"status_code":  resp.StatusCode,
 		})
 		return
 	}
 
 	c.JSON(http.StatusOK, prediction)
+}
+
+// createHTTPClient creates an HTTP client with custom DNS resolution support
+func (s *ModelService) createHTTPClient(settings *ConnectionSettings) *http.Client {
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+
+	// If no DNS resolution overrides, return default client
+	if settings == nil || len(settings.DNSResolve) == 0 {
+		return client
+	}
+
+	// Build DNS resolution map
+	dnsResolveMap := make(map[string]string)
+	for _, resolve := range settings.DNSResolve {
+		if resolve.Host != "" && resolve.Port != "" && resolve.Address != "" {
+			// Create address key (host:port)
+			addressKey := resolve.Host + ":" + resolve.Port
+			// Set IP:port as the target
+			dnsResolveMap[addressKey] = resolve.Address + ":" + resolve.Port
+		}
+	}
+
+	// Create custom dialer
+	dialer := &net.Dialer{
+		Timeout: 30 * time.Second,
+	}
+
+	// Create custom transport with DNS override
+	transport := &http.Transport{
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			// Check if this address needs DNS override
+			if dnsOverride, exists := dnsResolveMap[addr]; exists {
+				// Use the override address
+				addr = dnsOverride
+			}
+			return dialer.DialContext(ctx, network, addr)
+		},
+	}
+
+	client.Transport = transport
+	return client
 }
 
 // GetModelLogs handles GET /api/models/:modelName/logs

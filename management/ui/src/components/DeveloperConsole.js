@@ -14,7 +14,10 @@ import {
   Key,
   Settings,
   X,
-  RefreshCw
+  RefreshCw,
+  Plus,
+  Minus,
+  Server
 } from 'lucide-react';
 
 const DeveloperConsole = () => {
@@ -34,9 +37,22 @@ const DeveloperConsole = () => {
   const [useCustomConfig, setUseCustomConfig] = useState(false);
   const [requestPresets, setRequestPresets] = useState([]);
   const [selectedPreset, setSelectedPreset] = useState('');
+  const [showConnectionSettings, setShowConnectionSettings] = useState(false);
+  
+  // Connection settings (similar to InferenceTest)
+  const [connectionSettings, setConnectionSettings] = useState({
+    useCustom: false,
+    protocol: 'https',
+    host: '',
+    port: '',
+    path: '',
+    headers: [{ key: 'Content-Type', value: 'application/json' }],
+    dnsResolve: []
+  });
   
   // AI Gateway service state
   const [aiGatewayService, setAIGatewayService] = useState(null);
+  const [gatewayInfo, setGatewayInfo] = useState(null);
   
   const api = useApi();
   const { user } = useAuth();
@@ -45,6 +61,7 @@ const DeveloperConsole = () => {
     fetchPublishedModels();
     fetchTestHistory();
     fetchAIGatewayService();
+    fetchGatewayInfo();
   }, []);
 
   const fetchTestHistory = async () => {
@@ -67,6 +84,16 @@ const DeveloperConsole = () => {
     }
   };
 
+  const fetchGatewayInfo = async () => {
+    try {
+      const response = await api.getAIGatewayService();
+      setGatewayInfo(response.data);
+    } catch (error) {
+      console.error('Error fetching gateway info:', error);
+      setGatewayInfo(null);
+    }
+  };
+
   const fetchPublishedModels = async () => {
     try {
       setLoading(true);
@@ -77,6 +104,7 @@ const DeveloperConsole = () => {
         setSelectedModel(models[0]);
         generateSampleRequest(models[0]);
         initializeRequestPresets();
+        updateConnectionSettingsForModel(models[0]);
       }
     } catch (error) {
       toast.error('Failed to fetch published models');
@@ -200,7 +228,92 @@ const DeveloperConsole = () => {
       generateSampleRequest(model);
       setTestResponse(null);
       initializeRequestPresets();
+      updateConnectionSettingsForModel(model);
     }
+  };
+
+  const updateConnectionSettingsForModel = (model) => {
+    if (model && model.externalURL) {
+      try {
+        const url = new URL(model.externalURL);
+        setConnectionSettings(prev => ({
+          ...prev,
+          host: url.hostname,
+          port: url.port || (url.protocol === 'https:' ? '443' : '80'),
+          path: model.modelType === 'openai' ? '/chat/completions' : '/predict',
+          protocol: url.protocol.replace(':', ''),
+          headers: [
+            { key: 'Content-Type', value: 'application/json' },
+            { key: model.modelType === 'openai' ? 'X-API-Key' : 'x-api-key', value: model.apiKey }
+          ],
+          dnsResolve: prev.dnsResolve || []
+        }));
+      } catch (error) {
+        console.error('Error parsing model URL:', error);
+      }
+    }
+  };
+
+  // Connection settings helper functions
+  const addHeader = () => {
+    setConnectionSettings(prev => ({
+      ...prev,
+      headers: [...prev.headers, { key: '', value: '' }]
+    }));
+  };
+
+  const removeHeader = (index) => {
+    setConnectionSettings(prev => ({
+      ...prev,
+      headers: prev.headers.filter((_, i) => i !== index)
+    }));
+  };
+
+  const updateHeader = (index, field, value) => {
+    setConnectionSettings(prev => ({
+      ...prev,
+      headers: prev.headers.map((header, i) => 
+        i === index ? { ...header, [field]: value } : header
+      )
+    }));
+  };
+
+  const addDnsResolve = () => {
+    // Get default values from current connection settings
+    const defaultHost = connectionSettings.host || '';
+    const defaultPort = connectionSettings.port || '443';
+    const defaultAddress = gatewayInfo?.clusterIP || '';
+    
+    setConnectionSettings(prev => ({
+      ...prev,
+      dnsResolve: [...prev.dnsResolve, { 
+        host: defaultHost, 
+        port: defaultPort, 
+        address: defaultAddress 
+      }]
+    }));
+  };
+
+  const removeDnsResolve = (index) => {
+    setConnectionSettings(prev => ({
+      ...prev,
+      dnsResolve: prev.dnsResolve.filter((_, i) => i !== index)
+    }));
+  };
+
+  const updateDnsResolve = (index, field, value) => {
+    setConnectionSettings(prev => ({
+      ...prev,
+      dnsResolve: prev.dnsResolve.map((resolve, i) => 
+        i === index ? { ...resolve, [field]: value } : resolve
+      )
+    }));
+  };
+
+  const buildCustomUrl = () => {
+    const { protocol, host, port, path } = connectionSettings;
+    const portPart = port ? `:${port}` : '';
+    return `${protocol}://${host}${portPart}${path}`;
   };
 
   const handleTestModel = async () => {
@@ -210,51 +323,57 @@ const DeveloperConsole = () => {
     }
 
     setTestLoading(true);
+    const startTime = Date.now();
 
     try {
       const requestData = JSON.parse(testRequest);
       
-      // Build test execution request
-      const testExecutionRequest = {
-        modelName: selectedModel.modelName,
-        testData: requestData,
-        useCustomConfig: useCustomConfig,
-        customEndpoint: useCustomConfig ? customEndpoint : '',
-        customMethod: useCustomConfig ? customMethod : 'POST',
-        customHeaders: useCustomConfig ? customHeaders : []
+      // Use the same predict API that Test Model Inference uses
+      // This will use the HTTP client with DNS resolution support
+      // Pass connection settings if there are DNS overrides or if using custom config
+      const connectionConfig = connectionSettings.dnsResolve.length > 0 || connectionSettings.useCustom ? connectionSettings : null;
+      
+      const response = await api.predict(selectedModel.modelName, requestData, connectionConfig);
+      const responseTime = Date.now() - startTime;
+      
+      const testResult = {
+        success: true,
+        data: response.data,
+        request: requestData,
+        endpoint: connectionSettings.useCustom 
+          ? buildCustomUrl()
+          : selectedModel.externalURL,
+        status: 'Success',
+        statusCode: 200,
+        responseTime: responseTime,
+        timestamp: new Date()
       };
-
-      // Execute test via management service
-      const response = await api.executeTest(testExecutionRequest);
-      const testResult = response.data;
 
       setTestResponse(testResult);
       
       // Add to history
       setTestHistory(prev => [testResult, ...prev.slice(0, 9)]); // Keep last 10 tests
       
-      if (testResult.success) {
-        toast.success(`Test completed successfully (${testResult.responseTime}ms)`);
-      } else {
-        toast.error(`Test failed: ${testResult.error || 'Unknown error'}`);
-      }
+      toast.success(`Test completed successfully (${responseTime}ms)`);
+      
     } catch (error) {
+      const responseTime = Date.now() - startTime;
       const errorResult = {
         success: false,
         error: error.response?.data?.error || error.message,
-        request: testRequest,
-        endpoint: selectedModel.modelType === 'openai' 
-          ? `${selectedModel.externalURL}/chat/completions`
-          : `${selectedModel.externalURL}/predict`,
-        status: 'Network Error',
+        request: JSON.parse(testRequest),
+        endpoint: connectionSettings.useCustom 
+          ? buildCustomUrl()
+          : selectedModel.externalURL,
+        status: error.response?.status ? `HTTP ${error.response.status}` : 'Network Error',
         statusCode: error.response?.status || 0,
-        responseTime: 0,
+        responseTime: responseTime,
         timestamp: new Date()
       };
 
       setTestResponse(errorResult);
       setTestHistory(prev => [errorResult, ...prev.slice(0, 9)]);
-      toast.error(`Network error: ${error.response?.data?.error || error.message}`);
+      toast.error(`Test failed: ${error.response?.data?.error || error.message}`);
     } finally {
       setTestLoading(false);
     }
@@ -587,113 +706,285 @@ fetch(url, {
                 </div>
               </div>
 
-              {/* Advanced Customization */}
+              {/* Connection Settings */}
               <div style={{ marginBottom: '1.5rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
                   <h4 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <Settings size={18} />
-                    Advanced Configuration
+                    Connection Settings
                   </h4>
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem' }}>
-                      <input
-                        type="checkbox"
-                        checked={useCustomConfig}
-                        onChange={(e) => setUseCustomConfig(e.target.checked)}
-                      />
-                      Use Custom Config
-                    </label>
-                    {useCustomConfig && (
-                      <button
-                        onClick={resetCustomization}
-                        className="btn btn-secondary btn-sm"
-                        title="Reset to defaults"
-                      >
-                        <RefreshCw size={14} />
-                      </button>
-                    )}
-                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => setShowConnectionSettings(!showConnectionSettings)}
+                  >
+                    <Settings size={14} />
+                    {showConnectionSettings ? 'Hide' : 'Show'} Settings
+                  </button>
                 </div>
 
-                {useCustomConfig && (
-                  <div style={{ 
-                    border: '1px solid #e2e8f0', 
-                    borderRadius: '4px', 
-                    padding: '1rem',
-                    backgroundColor: '#f8fafc',
-                    marginBottom: '1rem'
-                  }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                      <div>
-                        <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: '500' }}>
-                          HTTP Method
-                        </label>
-                        <select
-                          value={customMethod}
-                          onChange={(e) => setCustomMethod(e.target.value)}
-                          className="form-control"
-                        >
-                          <option value="GET">GET</option>
-                          <option value="POST">POST</option>
-                          <option value="PUT">PUT</option>
-                          <option value="PATCH">PATCH</option>
-                          <option value="DELETE">DELETE</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: '500' }}>
-                          Custom Endpoint
-                        </label>
+                {showConnectionSettings && (
+                  <div className="card" style={{ marginBottom: '1.5rem', padding: '1rem', backgroundColor: '#f8fafc' }}>
+                    <h3 style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <Globe size={18} />
+                      Connection Settings
+                    </h3>
+                    
+                    <div className="form-group">
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <input
-                          type="text"
-                          value={customEndpoint}
-                          onChange={(e) => setCustomEndpoint(e.target.value)}
-                          placeholder={selectedModel.externalURL}
-                          className="form-control"
+                          type="checkbox"
+                          checked={connectionSettings.useCustom}
+                          onChange={(e) => setConnectionSettings(prev => ({ ...prev, useCustom: e.target.checked }))}
                         />
-                      </div>
+                        Use custom connection settings
+                      </label>
+                      <small style={{ color: '#6b7280' }}>
+                        Override default external URL with custom connection parameters
+                      </small>
                     </div>
 
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                        <label style={{ fontSize: '0.875rem', fontWeight: '500' }}>Custom Headers</label>
+                    {connectionSettings.useCustom && (
+                      <>
+                        <div className="grid grid-2">
+                          <div className="form-group">
+                            <label className="form-label">Protocol</label>
+                            <select
+                              value={connectionSettings.protocol}
+                              onChange={(e) => setConnectionSettings(prev => ({ ...prev, protocol: e.target.value }))}
+                              className="form-select"
+                            >
+                              <option value="http">HTTP</option>
+                              <option value="https">HTTPS</option>
+                            </select>
+                          </div>
+                          
+                          <div className="form-group">
+                            <label className="form-label">Host</label>
+                            <input
+                              type="text"
+                              value={connectionSettings.host}
+                              onChange={(e) => setConnectionSettings(prev => ({ ...prev, host: e.target.value }))}
+                              className="form-input"
+                              placeholder="api.router.inference-in-a-box"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-2">
+                          <div className="form-group">
+                            <label className="form-label">Port</label>
+                            <input
+                              type="text"
+                              value={connectionSettings.port}
+                              onChange={(e) => setConnectionSettings(prev => ({ ...prev, port: e.target.value }))}
+                              className="form-input"
+                              placeholder="443"
+                            />
+                          </div>
+                          
+                          <div className="form-group">
+                            <label className="form-label">Path</label>
+                            <input
+                              type="text"
+                              value={connectionSettings.path}
+                              onChange={(e) => setConnectionSettings(prev => ({ ...prev, path: e.target.value }))}
+                              className="form-input"
+                              placeholder="/chat/completions or /predict"
+                            />
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    <div className="form-group">
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <label className="form-label">Headers</label>
                         <button
-                          onClick={addCustomHeader}
+                          type="button"
                           className="btn btn-secondary btn-sm"
-                          title="Add header"
+                          onClick={addHeader}
                         >
-                          + Add Header
+                          <Plus size={14} />
+                          Add Header
                         </button>
                       </div>
+                      
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                        {customHeaders.map((header, index) => (
+                        {connectionSettings.headers.map((header, index) => (
                           <div key={index} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                             <input
                               type="text"
                               value={header.key}
-                              onChange={(e) => updateCustomHeader(index, 'key', e.target.value)}
+                              onChange={(e) => updateHeader(index, 'key', e.target.value)}
+                              className="form-input"
                               placeholder="Header name"
-                              className="form-control"
                               style={{ flex: 1 }}
                             />
                             <input
                               type="text"
                               value={header.value}
-                              onChange={(e) => updateCustomHeader(index, 'value', e.target.value)}
+                              onChange={(e) => updateHeader(index, 'value', e.target.value)}
+                              className="form-input"
                               placeholder="Header value"
-                              className="form-control"
-                              style={{ flex: 1 }}
+                              style={{ flex: 2 }}
                             />
                             <button
-                              onClick={() => removeCustomHeader(index)}
-                              className="btn btn-secondary btn-sm"
-                              title="Remove header"
-                              disabled={customHeaders.length === 1}
+                              type="button"
+                              className="btn btn-danger btn-sm"
+                              onClick={() => removeHeader(index)}
+                              disabled={connectionSettings.headers.length === 1}
                             >
-                              <X size={14} />
+                              <Minus size={14} />
                             </button>
                           </div>
                         ))}
+                      </div>
+                    </div>
+
+                    <div className="form-group">
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <label className="form-label">
+                          <Server size={14} style={{ marginRight: '0.25rem', display: 'inline' }} />
+                          DNS Resolution (like curl --resolve)
+                        </label>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={addDnsResolve}
+                        >
+                          <Plus size={14} />
+                          Add DNS Override
+                        </button>
+                      </div>
+                      <small style={{ color: '#6b7280', marginBottom: '0.5rem', display: 'block' }}>
+                        Override DNS resolution for testing external-facing hostnames against the gateway.
+                      </small>
+                      
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        {connectionSettings.dnsResolve.length === 0 ? (
+                          <div style={{ 
+                            padding: '0.75rem', 
+                            fontSize: '0.75rem',
+                            color: '#6b7280',
+                            textAlign: 'center',
+                            fontStyle: 'italic',
+                            backgroundColor: '#f9fafb',
+                            border: '1px dashed #d1d5db',
+                            borderRadius: '6px'
+                          }}>
+                            {gatewayInfo?.clusterIP ? (
+                              <div>
+                                <div>Click "Add DNS Override" to route requests through the gateway</div>
+                                <div style={{ marginTop: '0.25rem', fontSize: '0.625rem', color: '#9ca3af' }}>
+                                  (Will use hostname from external URL and gateway IP)
+                                </div>
+                              </div>
+                            ) : (
+                              <div>Loading gateway information...</div>
+                            )}
+                          </div>
+                        ) : (
+                          connectionSettings.dnsResolve.map((resolve, index) => {
+                            const isHostDefault = resolve.host === connectionSettings.host && resolve.host !== '';
+                            const isPortDefault = resolve.port === (connectionSettings.port || '443') && resolve.port !== '';
+                            const isAddressDefault = resolve.address === gatewayInfo?.clusterIP && resolve.address !== '';
+                            const hasDefaults = isHostDefault || isPortDefault || isAddressDefault;
+
+                            return (
+                              <div key={index} style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                  <input
+                                    type="text"
+                                    value={resolve.host}
+                                    onChange={(e) => updateDnsResolve(index, 'host', e.target.value)}
+                                    className="form-input"
+                                    placeholder="Host (e.g., api.router.inference-in-a-box)"
+                                    style={{ 
+                                      flex: 2,
+                                      ...(isHostDefault && {
+                                        backgroundColor: '#f9fafb',
+                                        fontStyle: 'italic',
+                                        color: '#6b7280'
+                                      })
+                                    }}
+                                  />
+                                  <input
+                                    type="text"
+                                    value={resolve.port}
+                                    onChange={(e) => updateDnsResolve(index, 'port', e.target.value)}
+                                    className="form-input"
+                                    placeholder="Port (e.g., 443)"
+                                    style={{ 
+                                      flex: 1,
+                                      ...(isPortDefault && {
+                                        backgroundColor: '#f9fafb',
+                                        fontStyle: 'italic',
+                                        color: '#6b7280'
+                                      })
+                                    }}
+                                  />
+                                  <input
+                                    type="text"
+                                    value={resolve.address}
+                                    onChange={(e) => updateDnsResolve(index, 'address', e.target.value)}
+                                    className="form-input"
+                                    placeholder="Gateway IP (auto-detected)"
+                                    style={{ 
+                                      flex: 2,
+                                      ...(isAddressDefault && {
+                                        backgroundColor: '#f9fafb',
+                                        fontStyle: 'italic',
+                                        color: '#6b7280'
+                                      })
+                                    }}
+                                  />
+                                  <button
+                                    type="button"
+                                    className="btn btn-danger btn-sm"
+                                    onClick={() => removeDnsResolve(index)}
+                                  >
+                                    <Minus size={14} />
+                                  </button>
+                                </div>
+                                {hasDefaults && (
+                                  <div style={{ 
+                                    fontSize: '0.625rem', 
+                                    color: '#9ca3af', 
+                                    fontStyle: 'italic',
+                                    paddingLeft: '0.5rem'
+                                  }}>
+                                    Using default values (can be customized)
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label">Full URL Preview</label>
+                      <div style={{ 
+                        padding: '0.75rem', 
+                        backgroundColor: '#e5e7eb', 
+                        borderRadius: '6px',
+                        fontFamily: 'monospace',
+                        fontSize: '0.875rem',
+                        wordBreak: 'break-all'
+                      }}>
+                        {connectionSettings.useCustom ? buildCustomUrl() : selectedModel?.externalURL}
+                        {connectionSettings.dnsResolve.length > 0 && (
+                          <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: '#4b5563' }}>
+                            <strong>DNS Overrides:</strong>
+                            {connectionSettings.dnsResolve.map((resolve, index) => (
+                              resolve.host && resolve.port && resolve.address && (
+                                <div key={index}>→ {resolve.host}:{resolve.port} will resolve to {resolve.address}:{resolve.port}</div>
+                              )
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
