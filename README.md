@@ -114,7 +114,7 @@ graph TB
 ### Core Platform Components
 - **🐳 Kind** - Local Kubernetes cluster for development and testing
 - **🚪 Envoy Gateway** - Cloud-native API gateway with advanced routing capabilities
-- **🤖 Envoy AI Gateway** - AI-specific gateway with JWT authentication and model routing
+- **🤖 Envoy AI Gateway** - AI-specific gateway with JWT authentication, model routing, and OpenAI API compatibility
 - **🕸️ Istio** - Service mesh for security, traffic management, and observability
 - **🦾 KServe** - Kubernetes-native model serving with auto-scaling
 - **🌊 Knative** - Serverless framework for event-driven applications
@@ -132,6 +132,7 @@ graph TB
 - **🔥 PyTorch Serve** - PyTorch model serving  
 - **⚡ Scikit-learn** - Traditional ML model serving
 - **🤗 Hugging Face** - Transformer model support
+- **🌐 OpenAI API** - Compatible endpoints for LLM serving (vLLM, TGI, etc.)
 
 ## 🎯 Key Features Demonstrated
 
@@ -193,11 +194,13 @@ graph LR
 
 - **Serverless auto-scaling** from zero to N instances based on demand
 - **Multi-framework support** (Scikit-learn, PyTorch, TensorFlow, Hugging Face)
-- **AI Gateway routing** with intelligent path-based and header-based routing
+- **OpenAI API compatibility** with automatic protocol translation for LLMs
+- **AI Gateway routing** with model-aware header-based routing (x-ai-eg-model)
 - **Canary deployments** for gradual model rollouts
 - **A/B testing** with intelligent traffic splitting
 - **Model versioning** and rollback capabilities
 - **Resource optimization** with GPU/CPU scheduling
+- **Protocol translation** between OpenAI and KServe formats
 
 ### 🌐 Multi-Tenancy & Governance
 - **Workspace isolation** with dedicated namespaces per tenant
@@ -252,6 +255,7 @@ The **Management Service** is a comprehensive web-based platform for managing AI
 - **Update published models** - modify rate limits, paths, and hostnames
 - **Multi-tenant model isolation** with namespace-based security
 - **Automatic model type detection** (Traditional vs OpenAI-compatible)
+- **OpenAI API compatibility** for LLM models (vLLM, TGI, etc.)
 
 #### **Rate Limiting & Traffic Control**
 - **Per-model rate limiting** with configurable requests per minute/hour
@@ -270,6 +274,13 @@ The **Management Service** is a comprehensive web-based platform for managing AI
 - **API key management** for external access
 - **API key rotation** with zero-downtime updates
 - **Admin and tenant-level permissions**
+
+#### **Model Testing & Validation**
+- **Interactive inference testing** directly from the UI
+- **Support for both traditional and OpenAI-style testing**
+- **Real-time response visualization**
+- **Custom DNS resolution** for cluster-internal testing
+- **Automatic JWT token generation** for test requests
 
 ### 🔧 Technical Architecture
 
@@ -736,12 +747,14 @@ sequenceDiagram
 - **Model-aware routing** based on x-ai-eg-model header
 - **Header-based tenant routing** for multi-tenant isolation
 - **Fallback routing** to Istio Gateway for non-AI traffic
+- **EnvoyExtensionPolicy** for external AI processing
 
 ### Rate Limiting & Traffic Management
 - **Per-tenant rate limiting** with configurable limits
 - **Global rate limiting** for platform protection
 - **Circuit breaker** patterns for resilience
 - **Retry policies** with exponential backoff
+- **Token-based limiting** for LLM models
 
 ### Security & Compliance
 - **CORS support** for web applications
@@ -749,25 +762,50 @@ sequenceDiagram
 - **Security headers** injection
 - **Audit logging** for compliance requirements
 
+### OpenAI API Compatibility
+- **Automatic protocol translation** from OpenAI to KServe format
+- **Support for chat completions** (`/v1/chat/completions`)
+- **Support for completions** (`/v1/completions`)
+- **Support for embeddings** (`/v1/embeddings`)
+- **Model-specific routing** with x-ai-eg-model header
+- **Compatible with popular LLM servers** (vLLM, TGI, Ollama, etc.)
+
 ### Example API Usage
 ```bash
 # All requests go through the AI Gateway first (Tier-1 Entry Point)
 export AI_GATEWAY_URL="http://localhost:8080"
 export JWT_TOKEN="<your-jwt-token>"
 
-# Authenticated request to sklearn model (tenant-a)
+# Traditional model request to sklearn model (tenant-a)
 curl -H "Authorization: Bearer $JWT_TOKEN" \
      -H "x-tenant: tenant-a" \
      -H "x-ai-eg-model: sklearn-iris" \
      $AI_GATEWAY_URL/v1/models/sklearn-iris:predict \
      -d '{"instances": [[5.1, 3.5, 1.4, 0.2]]}'
 
-# Authenticated request to pytorch model (tenant-c)
+# OpenAI-compatible chat completion request
 curl -H "Authorization: Bearer $JWT_TOKEN" \
-     -H "x-tenant: tenant-c" \
-     -H "x-ai-eg-model: pytorch-resnet" \
-     $AI_GATEWAY_URL/v1/models/pytorch-resnet:predict \
-     -d '{"instances": [[[0.1, 0.2, 0.3]]]}'
+     -H "x-tenant: tenant-a" \
+     -H "x-ai-eg-model: llama-3-8b" \
+     $AI_GATEWAY_URL/v1/chat/completions \
+     -d '{
+       "model": "llama-3-8b",
+       "messages": [
+         {"role": "user", "content": "Hello, how are you?"}
+       ],
+       "temperature": 0.7
+     }'
+
+# OpenAI-compatible completion request
+curl -H "Authorization: Bearer $JWT_TOKEN" \
+     -H "x-tenant: tenant-a" \
+     -H "x-ai-eg-model: gpt-j-6b" \
+     $AI_GATEWAY_URL/v1/completions \
+     -d '{
+       "model": "gpt-j-6b",
+       "prompt": "The quick brown fox",
+       "max_tokens": 50
+     }'
 
 # The AI Gateway handles:
 # 1. JWT validation and tenant authorization
@@ -787,16 +825,18 @@ curl -H "Authorization: Bearer $JWT_TOKEN" \
 5. **Get JWT Tokens**: Run `./scripts/get-jwt-tokens.sh` for authentication
 
 ### Development Workflow
-- **Management Service**: See [`management/README.md`](management/README.md) for Go backend + React frontend development
-- **Configuration**: All Kubernetes configs are in [`configs/`](configs/) directory
-- **Scripts**: Automation scripts in [`scripts/`](scripts/) for deployment and testing
+- **Management Service**: See [management/README.md](management/README.md) for Go backend + React frontend development
+- **Configuration**: Kubernetes configs in [configs/](configs/) directory
+- **Automation**: Deployment scripts in [scripts/](scripts/) directory
 
-### Documentation
-- **Architecture**: [`docs/architecture.md`](docs/architecture.md) - Detailed system design
-- **Demo Guide**: [`demo.md`](demo.md) - Comprehensive demo instructions
-- **Claude Guide**: [`CLAUDE.md`](CLAUDE.md) - AI assistant deployment guidance
-- **Getting Started**: [`docs/getting-started.md`](docs/getting-started.md) - Step-by-step setup
-- **Usage**: [`docs/usage.md`](docs/usage.md) - API usage and examples
+### 📚 Documentation
+- **[Getting Started Guide](docs/getting-started.md)** - Step-by-step installation
+- **[Usage Guide](docs/usage.md)** - API usage and service access
+- **[Architecture Guide](docs/architecture.md)** - Technical system design  
+- **[Model Publishing Guide](docs/model-publishing-guide.md)** - Publishing workflow
+- **[Management API Reference](docs/management-service-api.md)** - Complete API docs
+- **[Demo Guide](demo.md)** - Interactive demonstrations
+- **[Claude Guide](CLAUDE.md)** - AI assistant deployment guidance
 
 ## 🔧 Troubleshooting
 
@@ -807,27 +847,19 @@ curl -H "Authorization: Bearer $JWT_TOKEN" \
 - **Model not accessible**: Verify model is ready with `kubectl get inferenceservice --all-namespaces`
 - **Port conflicts**: Ensure ports 3000, 8080, 8085, 9090, 16686, 20001 are available
 
-### Verification Commands
+### Quick Verification
+
+> **🔧 Detailed Troubleshooting:** For comprehensive troubleshooting steps, see [Usage Guide](docs/usage.md#quick-troubleshooting)
+
 ```bash
 # Check overall cluster health
 kubectl get pods --all-namespaces | grep -v Running
 
-# Check gateway status
-kubectl get gatewayclass,gateway,httproute -n envoy-gateway-system
-
-# Verify AI Gateway pods
+# Verify AI Gateway is ready
 kubectl get pods -n envoy-gateway-system
 
-# Check model connectivity and status
+# Check sample models are deployed
 kubectl get inferenceservice --all-namespaces
-kubectl describe inferenceservice sklearn-iris -n tenant-a
-
-# Test JWT server
-kubectl port-forward -n default svc/jwt-server 8081:8080 &
-curl http://localhost:8081/.well-known/jwks.json
-
-# Check observability stack
-kubectl get pods -n monitoring
 ```
 
 ### Cleanup
@@ -840,16 +872,26 @@ kind delete cluster --name inference-in-a-box
 ```
 
 ## 📝 Version Information
+
+> **🔧 Source of Truth:** All infrastructure component versions are defined in [`scripts/bootstrap.sh`](scripts/bootstrap.sh#L20-L30)
+
+### Infrastructure Components
 - **Istio**: v1.26.2
-- **KServe**: v0.15.2
+- **KServe**: v0.15.2  
 - **Knative**: v1.18.1
 - **Envoy Gateway**: v1.4.2
-- **Envoy AI Gateway**: v0.2.1
+- **Envoy AI Gateway**: v0.2.1 (with EnvoyExtensionPolicy)
 - **Cert Manager**: v1.18.1
 - **Prometheus Stack**: v75.6.0
 - **Grafana**: v12.0.2
 - **Jaeger**: v3.4.1
 - **Kiali**: v2.11.0
+
+### Runtime Components  
+- **Go**: v1.21 (management service backend)
+- **Node.js**: v18 (management service UI, JWT server)
+- **React**: v18.2.0 (management service frontend)
+- **OpenAI API**: Compatible with OpenAI SDK v1.x
 
 ## 🤝 Contributing
 This is a demonstration project showcasing enterprise AI/ML deployment patterns. For questions or improvements, please refer to the documentation or create an issue.
