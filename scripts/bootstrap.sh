@@ -431,6 +431,7 @@ install_envoy_gateway() {
         --version ${ENVOY_GATEWAY_VERSION} \
         --namespace envoy-gateway-system \
         --create-namespace
+    kubectl label namespace envoy-gateway-system --overwrite=true istio-injection=enabled
     
     # Wait for Envoy Gateway to be ready
     log "Waiting for Envoy Gateway to be ready..."
