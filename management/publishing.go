@@ -1609,14 +1609,10 @@ func (s *PublishingService) cleanupPublishedModelMetadata(namespace, modelName s
 }
 
 
-// createBackend creates a Backend resource that routes traffic to the istio-ingressgateway service.
+// createBackend creates a Backend resource that routes traffic to the KServe VirtualService.
 // 
-// The Backend resource uses:
-// - fqdn.hostname: The KServe model VirtualService hostname for proper Istio routing
-// - ip.address: The istio-ingressgateway service ClusterIP for direct traffic routing
-//
-// This configuration allows the AI Gateway to route to the KServe VirtualService
-// through the Istio ingress gateway, enabling proper service mesh integration.
+// The Backend resource uses FQDN to point directly to the KServe model VirtualService hostname,
+// allowing the AI Gateway to route through the Istio service mesh to reach the model endpoint.
 //
 // Parameters:
 // - namespace: The namespace of the tenant owning the model.
@@ -1627,15 +1623,8 @@ func (s *PublishingService) cleanupPublishedModelMetadata(namespace, modelName s
 // Returns:
 // - An error if the Backend resource creation fails.
 func (s *PublishingService) createBackend(namespace, modelName, backendName, kserveHostname string) error {
-	// Get istio-ingressgateway service ClusterIP
-	istioGatewayIP, err := s.getIstioIngressGatewayIP()
-	if err != nil {
-		return fmt.Errorf("failed to get istio-ingressgateway IP: %w", err)
-	}
-
-	// Create Backend resource with dual endpoint configuration:
+	// Create Backend resource with FQDN endpoint configuration:
 	// - FQDN: KServe VirtualService hostname for proper Istio routing
-	// - IP: istio-ingressgateway ClusterIP for direct traffic routing
 	backend := map[string]interface{}{
 		"apiVersion": "gateway.envoyproxy.io/v1alpha1",
 		"kind":       "Backend",
@@ -1656,10 +1645,6 @@ func (s *PublishingService) createBackend(namespace, modelName, backendName, kse
 						"hostname": kserveHostname,
 						"port":     80,
 					},
-					"ip": map[string]interface{}{
-						"address": istioGatewayIP,
-						"port":    80,
-					},
 				},
 			},
 		},
@@ -1668,29 +1653,14 @@ func (s *PublishingService) createBackend(namespace, modelName, backendName, kse
 	return s.k8sClient.CreateBackend("envoy-gateway-system", backend)
 }
 
-// getIstioIngressGatewayIP retrieves the ClusterIP of the istio-ingressgateway service
-func (s *PublishingService) getIstioIngressGatewayIP() (string, error) {
-	service, err := s.k8sClient.GetService("istio-system", "istio-ingressgateway")
-	if err != nil {
-		return "", fmt.Errorf("failed to get istio-ingressgateway service: %w", err)
-	}
-	
-	if service.Spec.ClusterIP == "" {
-		return "", fmt.Errorf("istio-ingressgateway service has no ClusterIP")
-	}
-	
-	return service.Spec.ClusterIP, nil
-}
-
 // createAIServiceBackend creates an AIServiceBackend resource that references a Backend resource.
 // 
 // The AIServiceBackend is a custom resource used to define AI service-specific configurations,
 // such as OpenAI schema and request timeouts, while delegating traffic routing to the referenced Backend.
-// The Backend resource contains both FQDN (KServe VirtualService hostname) and IP (istio-ingressgateway ClusterIP)
-// for proper routing through the Istio service mesh.
+// The Backend resource contains FQDN (KServe VirtualService hostname) for routing through the Istio service mesh.
 //
 // Architecture:
-// Client -> AI Gateway -> AIServiceBackend -> Backend (FQDN: KServe VS, IP: istio-gateway) -> Istio Gateway -> KServe Model
+// Client -> AI Gateway -> AIServiceBackend -> Backend (FQDN: KServe VirtualService) -> Istio Service Mesh -> KServe Model
 //
 // Parameters:
 // - namespace: The namespace of the tenant owning the model.
@@ -1702,7 +1672,7 @@ func (s *PublishingService) getIstioIngressGatewayIP() (string, error) {
 // - An error if the AIServiceBackend resource creation fails.
 func (s *PublishingService) createAIServiceBackend(namespace, modelName, backendName, kserveHostname string) error {
 	// Create AIServiceBackend resource that references the Backend for traffic routing
-	// The Backend contains FQDN (KServe VirtualService) and IP (istio-ingressgateway) for proper routing
+	// The Backend contains FQDN (KServe VirtualService) for routing through Istio service mesh
 	aiServiceBackend := map[string]interface{}{
 		"apiVersion": "aigateway.envoyproxy.io/v1alpha1",
 		"kind":       "AIServiceBackend",
