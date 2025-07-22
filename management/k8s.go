@@ -330,6 +330,19 @@ func (k *K8sClient) GetServices(namespace string) ([]corev1.Service, error) {
 	return services.Items, nil
 }
 
+// GetService retrieves a specific service
+func (k *K8sClient) GetService(namespace, name string) (*corev1.Service, error) {
+	ctx := context.Background()
+	
+	service, err := k.clientset.CoreV1().Services(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		k.logError("GetService", err)
+		return nil, fmt.Errorf("failed to get service %s in namespace %s: %w", name, namespace, err)
+	}
+	
+	return service, nil
+}
+
 
 // GetGateways retrieves Gateway API gateways
 func (k *K8sClient) GetGateways(namespace string) ([]map[string]interface{}, error) {
