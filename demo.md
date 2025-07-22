@@ -1,6 +1,11 @@
 # 🎭 Inference-in-a-Box Demo Guide
 
+> **📋 Navigation:** [🏠 Main README](README.md) • [🎯 Goals & Vision](GOALS.md) • [🚀 Getting Started](docs/getting-started.md) • [📖 Usage Guide](docs/usage.md) • [🏗️ Architecture](docs/architecture.md) • [🤖 AI Assistant](CLAUDE.md)
+
 This guide provides step-by-step instructions for running interactive demonstrations of the Inference-in-a-Box platform capabilities.
+
+> **🎯 Demo Context:** These demonstrations showcase the capabilities outlined in [GOALS.md](GOALS.md)
+> **🚀 Setup Required:** Ensure platform is deployed using [Getting Started Guide](docs/getting-started.md)
 
 ## 📋 Prerequisites
 

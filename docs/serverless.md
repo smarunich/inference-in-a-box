@@ -1,6 +1,11 @@
 # KServe Serverless Guide
 
+> **📋 Navigation:** [🏠 Main README](../README.md) • [🎯 Goals & Vision](../GOALS.md) • [🚀 Getting Started](getting-started.md) • [📖 Usage Guide](usage.md) • [🏗️ Architecture](architecture.md) • [🤖 AI Assistant](../CLAUDE.md)
+
 This guide explains how to use the serverless capabilities of KServe in the Inference-in-a-Box platform.
+
+> **🎯 Serverless Goals:** Serverless model serving is a key capability outlined in [GOALS.md](../GOALS.md)
+> **🏗️ Architecture Context:** See how serverless fits into the overall design in [Architecture Guide](architecture.md)
 
 ## Overview
 

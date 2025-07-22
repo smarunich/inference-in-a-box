@@ -1,8 +1,11 @@
 # Getting Started with Inference-in-a-Box
 
+> **📋 Navigation:** [🏠 Main README](../README.md) • [🎯 Goals & Vision](../GOALS.md) • [📖 Usage Guide](usage.md) • [🏗️ Architecture](architecture.md) • [🤖 AI Assistant](../CLAUDE.md)
+
 This guide provides detailed step-by-step instructions to get the platform up and running.
 
 > **📖 Quick Reference:** For a condensed quick start, see the [Quick Start section in README.md](../README.md#quick-start)
+> **🎯 Why This Project:** To understand the goals and vision behind this platform, start with [GOALS.md](../GOALS.md)
 
 ## Prerequisites
 

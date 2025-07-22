@@ -1,6 +1,10 @@
 # CLAUDE.md
 
+> **📋 Navigation:** [🏠 Main README](README.md) • [🎯 Goals & Vision](GOALS.md) • [🚀 Getting Started](docs/getting-started.md) • [📖 Usage Guide](docs/usage.md) • [🏗️ Architecture](docs/architecture.md)
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+> **🎯 Project Context:** This project demonstrates enterprise-grade AI/ML inference patterns. See [GOALS.md](GOALS.md) for complete vision and objectives.
 
 ## Project Overview
 

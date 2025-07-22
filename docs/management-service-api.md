@@ -1,6 +1,11 @@
 # Management Service API Reference
 
+> **📋 Navigation:** [🏠 Main README](../README.md) • [🎯 Goals & Vision](../GOALS.md) • [🚀 Getting Started](getting-started.md) • [📖 Usage Guide](usage.md) • [🏗️ Architecture](architecture.md) • [🤖 AI Assistant](../CLAUDE.md)
+
 The Management Service provides a comprehensive REST API for managing AI/ML model inference operations. This document provides detailed API specifications, request/response formats, and usage examples.
+
+> **🎯 Management Goals:** The Management Service enables the operational capabilities outlined in [GOALS.md](../GOALS.md)
+> **📋 Publishing Workflow:** For step-by-step publishing instructions, see [Model Publishing Guide](model-publishing-guide.md)
 
 ## Base URL
 

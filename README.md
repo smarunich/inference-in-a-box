@@ -1,5 +1,7 @@
 # 🚀 Inference-in-a-Box: Enterprise AI/ML Platform Demo
 
+> **📋 Quick Navigation:** [🎯 Goals & Vision](GOALS.md) • [🚀 Getting Started](docs/getting-started.md) • [📖 Usage Guide](docs/usage.md) • [🏗️ Architecture](docs/architecture.md) • [🤖 AI Assistant](CLAUDE.md) • [🎭 Demos](demo.md)
+
 A complete, production-ready inference platform that demonstrates enterprise-grade AI/ML model serving using modern cloud-native technologies. This platform combines **Envoy AI Gateway**, **Istio service mesh**, **KServe serverless model serving**, and **comprehensive observability** to create a robust, scalable, and secure inference-as-a-service solution.
 
 ## 🎯 What You're Building
@@ -829,14 +831,50 @@ curl -H "Authorization: Bearer $JWT_TOKEN" \
 - **Configuration**: Kubernetes configs in [configs/](configs/) directory
 - **Automation**: Deployment scripts in [scripts/](scripts/) directory
 
-### 📚 Documentation
-- **[Getting Started Guide](docs/getting-started.md)** - Step-by-step installation
-- **[Usage Guide](docs/usage.md)** - API usage and service access
-- **[Architecture Guide](docs/architecture.md)** - Technical system design  
-- **[Model Publishing Guide](docs/model-publishing-guide.md)** - Publishing workflow
-- **[Management API Reference](docs/management-service-api.md)** - Complete API docs
-- **[Demo Guide](demo.md)** - Interactive demonstrations
-- **[Claude Guide](CLAUDE.md)** - AI assistant deployment guidance
+## 📚 Documentation & Learning Resources
+
+### 🎯 **Essential Reading**
+- **[GOALS.md](GOALS.md)** - 🎯 Project vision, goals, and strategic impact
+- **[Getting Started Guide](docs/getting-started.md)** - 🚀 Step-by-step installation and bootstrap
+- **[Usage Guide](docs/usage.md)** - 📖 API usage and service access patterns
+
+### 🏗️ **Architecture & Design**
+- **[Architecture Guide](docs/architecture.md)** - 🏗️ Technical system design and patterns
+- **[CLAUDE.md](CLAUDE.md)** - 🤖 AI assistant deployment guidance and commands
+
+### 🔧 **Operations & Management**
+- **[Management Service Guide](docs/management-service-api.md)** - 🔧 Complete API reference and web UI
+- **[Model Publishing Guide](docs/model-publishing-guide.md)** - 📋 Publishing workflow and best practices
+
+### 🎭 **Demonstrations & Examples**
+- **[Demo Guide](demo.md)** - 🎭 Interactive demonstrations and scenarios
+- **[Examples Directory](examples/)** - 💡 Sample configurations and use cases
+
+### 📖 **Learning Path Recommendations**
+
+#### **For Platform Engineers**
+1. Start with [GOALS.md](GOALS.md) to understand the vision and target state
+2. Follow [Getting Started Guide](docs/getting-started.md) for hands-on deployment
+3. Deep dive into [Architecture Guide](docs/architecture.md) for technical patterns
+4. Use [CLAUDE.md](CLAUDE.md) for AI-assisted operations
+
+#### **For AI/ML Engineers** 
+1. Read [GOALS.md](GOALS.md) to understand AI/ML capabilities
+2. Quick start with [Getting Started Guide](docs/getting-started.md)
+3. Explore [Model Publishing Guide](docs/model-publishing-guide.md) for model deployment
+4. Reference [Management Service Guide](docs/management-service-api.md) for API usage
+
+#### **For DevOps Teams**
+1. Start with [GOALS.md](GOALS.md) for operational understanding  
+2. Follow [Getting Started Guide](docs/getting-started.md) for deployment
+3. Study [Usage Guide](docs/usage.md) for service management patterns
+4. Use [Demo Guide](demo.md) for scenario testing
+
+#### **For Students & Educators**
+1. Begin with [GOALS.md](GOALS.md) for learning objectives
+2. Work through [Getting Started Guide](docs/getting-started.md) hands-on
+3. Explore [Demo Guide](demo.md) for practical scenarios
+4. Reference [Architecture Guide](docs/architecture.md) for deep understanding
 
 ## 🔧 Troubleshooting
 
