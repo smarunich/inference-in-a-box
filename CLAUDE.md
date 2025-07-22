@@ -195,8 +195,8 @@ This platform implements a **dual-gateway architecture** where external traffic 
 - `configs/observability/` - Grafana dashboards and monitoring configuration
 
 ### Root Configuration Files
-- `ai-eg-eep-ai-inference-gateway.yaml` - EnvoyExtensionPolicy for AI-specific external processing
 - `envoydump.json` / `envoydump-latest.json` - Envoy configuration dumps for debugging
+- `httproute.correct` - Sample HTTPRoute with URLRewrite and header modification filters
 
 ### Scripts Directory
 - `scripts/bootstrap.sh` - **Primary deployment script** for complete platform setup
