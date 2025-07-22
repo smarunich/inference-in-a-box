@@ -239,10 +239,10 @@ func (s *TestExecutionService) executeModelTest(req TestExecutionRequest, user *
 func (s *TestExecutionService) createHTTPClient(settings *ConnectionSettings) *http.Client {
 	// Build DNS resolution map
 	dnsResolveMap := make(map[string]string)
-	for _, resolve := range settings.DNSResolve {
-		if resolve.Host != "" && resolve.Port != "" && resolve.Address != "" {
-			addressKey := resolve.Host + ":" + resolve.Port
-			dnsResolveMap[addressKey] = resolve.Address + ":" + resolve.Port
+	for _, dnsResolve := range settings.DNSResolve {
+		if dnsResolve.Host != "" && dnsResolve.Port != "" && dnsResolve.Address != "" {
+			addressKey := dnsResolve.Host + ":" + dnsResolve.Port
+			dnsResolveMap[addressKey] = dnsResolve.Address + ":" + dnsResolve.Port
 		}
 	}
 

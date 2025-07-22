@@ -591,12 +591,12 @@ func (s *ModelService) createHTTPClient(settings *ConnectionSettings) *http.Clie
 
 	// Build DNS resolution map
 	dnsResolveMap := make(map[string]string)
-	for _, resolve := range settings.DNSResolve {
-		if resolve.Host != "" && resolve.Port != "" && resolve.Address != "" {
+	for _, dnsResolve := range settings.DNSResolve {
+		if dnsResolve.Host != "" && dnsResolve.Port != "" && dnsResolve.Address != "" {
 			// Create address key (host:port)
-			addressKey := resolve.Host + ":" + resolve.Port
+			addressKey := dnsResolve.Host + ":" + dnsResolve.Port
 			// Set IP:port as the target
-			dnsResolveMap[addressKey] = resolve.Address + ":" + resolve.Port
+			dnsResolveMap[addressKey] = dnsResolve.Address + ":" + dnsResolve.Port
 		}
 	}
 

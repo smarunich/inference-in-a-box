@@ -1640,6 +1640,21 @@ func (s *PublishingService) createBackend(namespace, modelName, backendName, kse
 	return s.k8sClient.CreateBackend("envoy-gateway-system", backend)
 }
 
+// createAIServiceBackend creates an AIServiceBackend resource that references a Backend resource.
+// 
+// The AIServiceBackend is a custom resource used to define AI service-specific configurations,
+// such as schema and timeouts, while delegating host header rewriting to the referenced Backend.
+// The Backend resource, identified by its fqdn, automatically handles host header rewriting,
+// eliminating the need for the EnvoyExtensionPolicy approach previously used for this purpose.
+//
+// Parameters:
+// - namespace: The namespace of the tenant owning the model.
+// - modelName: The name of the model being published.
+// - backendName: The name of the Backend resource to reference.
+// - kserveHostname: The hostname of the KServe inference service.
+//
+// Returns:
+// - An error if the AIServiceBackend resource creation fails.
 func (s *PublishingService) createAIServiceBackend(namespace, modelName, backendName, kserveHostname string) error {
 	// Create AIServiceBackend resource that references the Backend for host header rewriting
 	// The Backend with fqdn handles host header rewriting automatically

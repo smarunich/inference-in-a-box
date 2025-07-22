@@ -13,7 +13,7 @@ const InferenceTest = () => {
   const [loading, setLoading] = useState(false);
   const [loadingModels, setLoadingModels] = useState(true);
   const [showConnectionSettings, setShowConnectionSettings] = useState(false);
-  const [gatewayInfo, setGatewayInfo] = useState(null);
+  const [aiGatewayInfo, setAiGatewayInfo] = useState(null);
   
   // Connection settings
   const [connectionSettings, setConnectionSettings] = useState({
@@ -95,10 +95,10 @@ const InferenceTest = () => {
   const fetchGatewayInfo = async () => {
     try {
       const response = await api.getAIGatewayService();
-      setGatewayInfo(response.data);
+      setAiGatewayInfo(response.data);
     } catch (error) {
       console.error('Error fetching gateway info:', error);
-      setGatewayInfo(null);
+      setAiGatewayInfo(null);
     }
   };
 
@@ -129,7 +129,7 @@ const InferenceTest = () => {
     // Get default values from current connection settings
     const defaultHost = connectionSettings.host || '';
     const defaultPort = connectionSettings.port || '443';
-    const defaultAddress = gatewayInfo?.clusterIP || '';
+    const defaultAddress = aiGatewayInfo?.clusterIP || '';
     
     setConnectionSettings(prev => ({
       ...prev,
@@ -471,7 +471,7 @@ const InferenceTest = () => {
                           border: '1px dashed #d1d5db',
                           borderRadius: '6px'
                         }}>
-                          {gatewayInfo?.clusterIP ? (
+                          {aiGatewayInfo?.clusterIP ? (
                             <div>
                               <div>Click "Add DNS Override" to route requests through the gateway</div>
                               <div style={{ marginTop: '0.25rem', fontSize: '0.625rem', color: '#9ca3af' }}>
@@ -486,7 +486,7 @@ const InferenceTest = () => {
                         connectionSettings.dnsResolve.map((resolve, index) => {
                           const isHostDefault = resolve.host === connectionSettings.host && resolve.host !== '';
                           const isPortDefault = resolve.port === (connectionSettings.port || '443') && resolve.port !== '';
-                          const isAddressDefault = resolve.address === gatewayInfo?.clusterIP && resolve.address !== '';
+                          const isAddressDefault = resolve.address === aiGatewayInfo?.clusterIP && resolve.address !== '';
                           const hasDefaults = isHostDefault || isPortDefault || isAddressDefault;
 
                           return (

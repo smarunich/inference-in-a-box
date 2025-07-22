@@ -1167,6 +1167,18 @@ func (k *K8sClient) CreateBackend(namespace string, backend map[string]interface
 	return nil
 }
 
+func (k *K8sClient) DeleteBackend(namespace, backendName string) error {
+	ctx := context.Background()
+	
+	err := k.dynamicClient.Resource(BackendGVR).Namespace(namespace).Delete(ctx, backendName, metav1.DeleteOptions{})
+	if err != nil {
+		k.logError("DeleteBackend", err)
+		return fmt.Errorf("failed to delete Backend: %w", err)
+	}
+	
+	return nil
+}
+
 func (k *K8sClient) CreateAIServiceBackend(namespace string, aiServiceBackend map[string]interface{}) error {
 	ctx := context.Background()
 	
