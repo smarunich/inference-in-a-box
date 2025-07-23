@@ -330,6 +330,19 @@ func (k *K8sClient) GetServices(namespace string) ([]corev1.Service, error) {
 	return services.Items, nil
 }
 
+// GetService retrieves a specific service
+func (k *K8sClient) GetService(namespace, name string) (*corev1.Service, error) {
+	ctx := context.Background()
+	
+	service, err := k.clientset.CoreV1().Services(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		k.logError("GetService", err)
+		return nil, fmt.Errorf("failed to get service %s in namespace %s: %w", name, namespace, err)
+	}
+	
+	return service, nil
+}
+
 
 // GetGateways retrieves Gateway API gateways
 func (k *K8sClient) GetGateways(namespace string) ([]map[string]interface{}, error) {
@@ -1167,6 +1180,18 @@ func (k *K8sClient) CreateBackend(namespace string, backend map[string]interface
 	return nil
 }
 
+func (k *K8sClient) DeleteBackend(namespace, backendName string) error {
+	ctx := context.Background()
+	
+	err := k.dynamicClient.Resource(BackendGVR).Namespace(namespace).Delete(ctx, backendName, metav1.DeleteOptions{})
+	if err != nil {
+		k.logError("DeleteBackend", err)
+		return fmt.Errorf("failed to delete Backend: %w", err)
+	}
+	
+	return nil
+}
+
 func (k *K8sClient) CreateAIServiceBackend(namespace string, aiServiceBackend map[string]interface{}) error {
 	ctx := context.Background()
 	
@@ -1289,4 +1314,198 @@ func (k *K8sClient) DeleteEnvoyExtensionPolicy(namespace, policyName string) err
 	}
 	
 	return nil
+}
+
+// GetDestinationRules retrieves Istio DestinationRules
+func (k *K8sClient) GetDestinationRules(namespace string) ([]map[string]interface{}, error) {
+	ctx := context.Background()
+	
+	// Istio DestinationRule GVR
+	destinationRuleGVR := schema.GroupVersionResource{
+		Group:    "networking.istio.io",
+		Version:  "v1beta1",
+		Resource: "destinationrules",
+	}
+	
+	var result []map[string]interface{}
+	
+	if namespace == "" {
+		list, err := k.dynamicClient.Resource(destinationRuleGVR).List(ctx, metav1.ListOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to list destinationrules: %w", err)
+		}
+		for _, item := range list.Items {
+			result = append(result, item.Object)
+		}
+	} else {
+		list, err := k.dynamicClient.Resource(destinationRuleGVR).Namespace(namespace).List(ctx, metav1.ListOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to list destinationrules in namespace %s: %w", namespace, err)
+		}
+		for _, item := range list.Items {
+			result = append(result, item.Object)
+		}
+	}
+	
+	return result, nil
+}
+
+// GetServiceEntries retrieves Istio ServiceEntries
+func (k *K8sClient) GetServiceEntries(namespace string) ([]map[string]interface{}, error) {
+	ctx := context.Background()
+	
+	// Istio ServiceEntry GVR
+	serviceEntryGVR := schema.GroupVersionResource{
+		Group:    "networking.istio.io",
+		Version:  "v1beta1",
+		Resource: "serviceentries",
+	}
+	
+	var result []map[string]interface{}
+	
+	if namespace == "" {
+		list, err := k.dynamicClient.Resource(serviceEntryGVR).List(ctx, metav1.ListOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to list serviceentries: %w", err)
+		}
+		for _, item := range list.Items {
+			result = append(result, item.Object)
+		}
+	} else {
+		list, err := k.dynamicClient.Resource(serviceEntryGVR).Namespace(namespace).List(ctx, metav1.ListOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to list serviceentries in namespace %s: %w", namespace, err)
+		}
+		for _, item := range list.Items {
+			result = append(result, item.Object)
+		}
+	}
+	
+	return result, nil
+}
+
+// GetAuthorizationPolicies retrieves Istio AuthorizationPolicies
+func (k *K8sClient) GetAuthorizationPolicies(namespace string) ([]map[string]interface{}, error) {
+	ctx := context.Background()
+	
+	// Istio AuthorizationPolicy GVR
+	authorizationPolicyGVR := schema.GroupVersionResource{
+		Group:    "security.istio.io",
+		Version:  "v1beta1",
+		Resource: "authorizationpolicies",
+	}
+	
+	var result []map[string]interface{}
+	
+	if namespace == "" {
+		list, err := k.dynamicClient.Resource(authorizationPolicyGVR).List(ctx, metav1.ListOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to list authorizationpolicies: %w", err)
+		}
+		for _, item := range list.Items {
+			result = append(result, item.Object)
+		}
+	} else {
+		list, err := k.dynamicClient.Resource(authorizationPolicyGVR).Namespace(namespace).List(ctx, metav1.ListOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to list authorizationpolicies in namespace %s: %w", namespace, err)
+		}
+		for _, item := range list.Items {
+			result = append(result, item.Object)
+		}
+	}
+	
+	return result, nil
+}
+
+// GetPeerAuthentications retrieves Istio PeerAuthentications
+func (k *K8sClient) GetPeerAuthentications(namespace string) ([]map[string]interface{}, error) {
+	ctx := context.Background()
+	
+	// Istio PeerAuthentication GVR
+	peerAuthenticationGVR := schema.GroupVersionResource{
+		Group:    "security.istio.io",
+		Version:  "v1beta1",
+		Resource: "peerauthentications",
+	}
+	
+	var result []map[string]interface{}
+	
+	if namespace == "" {
+		list, err := k.dynamicClient.Resource(peerAuthenticationGVR).List(ctx, metav1.ListOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to list peerauthentications: %w", err)
+		}
+		for _, item := range list.Items {
+			result = append(result, item.Object)
+		}
+	} else {
+		list, err := k.dynamicClient.Resource(peerAuthenticationGVR).Namespace(namespace).List(ctx, metav1.ListOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to list peerauthentications in namespace %s: %w", namespace, err)
+		}
+		for _, item := range list.Items {
+			result = append(result, item.Object)
+		}
+	}
+	
+	return result, nil
+}
+
+// GetServingRuntimes retrieves KServe ServingRuntimes
+func (k *K8sClient) GetServingRuntimes(namespace string) ([]map[string]interface{}, error) {
+	ctx := context.Background()
+	
+	// KServe ServingRuntime GVR
+	servingRuntimeGVR := schema.GroupVersionResource{
+		Group:    "serving.kserve.io",
+		Version:  "v1alpha1",
+		Resource: "servingruntimes",
+	}
+	
+	var result []map[string]interface{}
+	
+	if namespace == "" {
+		list, err := k.dynamicClient.Resource(servingRuntimeGVR).List(ctx, metav1.ListOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to list servingruntimes: %w", err)
+		}
+		for _, item := range list.Items {
+			result = append(result, item.Object)
+		}
+	} else {
+		list, err := k.dynamicClient.Resource(servingRuntimeGVR).Namespace(namespace).List(ctx, metav1.ListOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to list servingruntimes in namespace %s: %w", namespace, err)
+		}
+		for _, item := range list.Items {
+			result = append(result, item.Object)
+		}
+	}
+	
+	return result, nil
+}
+
+// GetClusterServingRuntimes retrieves KServe ClusterServingRuntimes
+func (k *K8sClient) GetClusterServingRuntimes() ([]map[string]interface{}, error) {
+	ctx := context.Background()
+	
+	// KServe ClusterServingRuntime GVR
+	clusterServingRuntimeGVR := schema.GroupVersionResource{
+		Group:    "serving.kserve.io",
+		Version:  "v1alpha1",
+		Resource: "clusterservingruntimes",
+	}
+	
+	var result []map[string]interface{}
+	
+	list, err := k.dynamicClient.Resource(clusterServingRuntimeGVR).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list clusterservingruntimes: %w", err)
+	}
+	for _, item := range list.Items {
+		result = append(result, item.Object)
+	}
+	
+	return result, nil
 }

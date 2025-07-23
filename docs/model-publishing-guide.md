@@ -1,6 +1,11 @@
 # Model Publishing Guide
 
+> **📋 Navigation:** [🏠 Main README](../README.md) • [🎯 Goals & Vision](../GOALS.md) • [🚀 Getting Started](getting-started.md) • [📖 Usage Guide](usage.md) • [🏗️ Architecture](architecture.md) • [🤖 AI Assistant](../CLAUDE.md)
+
 This guide provides comprehensive instructions for publishing and managing AI/ML models using the inference-in-a-box Management Service.
+
+> **🎯 Publishing Goals:** Model publishing enables external access to AI/ML models as described in [GOALS.md](../GOALS.md)
+> **🔧 API Reference:** For complete API documentation, see [Management Service API](management-service-api.md)
 
 ## Overview
 

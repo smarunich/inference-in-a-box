@@ -13,3 +13,18 @@ metadata:
 spec:
   controllerName: gateway.envoyproxy.io/gatewayclass-controller
   description: "Standard Envoy Gateway class"
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: data-plane-sidecars
+  namespace: envoy-gateway-system
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyDeployment:
+        pod:
+          annotations:
+            traffic.sidecar.istio.io/includeInboundPorts: ""
+  routingType: Service

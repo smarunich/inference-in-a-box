@@ -2,9 +2,11 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -145,12 +147,22 @@ func (s *TestExecutionService) executeModelTest(req TestExecutionRequest, user *
 
 	// Set headers
 	for key, value := range headers {
-		httpReq.Header.Set(key, value)
+		if key == "Host" {
+			// Handle Host header specially
+			httpReq.Host = value
+		} else {
+			httpReq.Header.Set(key, value)
+		}
 	}
 
-	// Execute the request
-	client := &http.Client{
-		Timeout: 30 * time.Second,
+	// Create HTTP client with DNS resolution support
+	var client *http.Client
+	if req.ConnectionSettings != nil {
+		client = s.createHTTPClient(req.ConnectionSettings)
+	} else {
+		client = &http.Client{
+			Timeout: 30 * time.Second,
+		}
 	}
 	
 	resp, err := client.Do(httpReq)
@@ -221,6 +233,56 @@ func (s *TestExecutionService) executeModelTest(req TestExecutionRequest, user *
 	}
 
 	return result
+}
+
+// createHTTPClient creates an HTTP client with custom DNS resolution support
+func (s *TestExecutionService) createHTTPClient(settings *ConnectionSettings) *http.Client {
+	// Build DNS resolution map
+	dnsResolveMap := make(map[string]string)
+	for _, dnsResolve := range settings.DNSResolve {
+		if dnsResolve.Host != "" && dnsResolve.Port != "" && dnsResolve.Address != "" {
+			addressKey := dnsResolve.Host + ":" + dnsResolve.Port
+			dnsResolveMap[addressKey] = dnsResolve.Address + ":" + dnsResolve.Port
+		}
+	}
+
+	// Create custom dialer
+	dialer := &net.Dialer{
+		Timeout:   10 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}
+
+	// Create custom transport with DNS override
+	transport := &http.Transport{
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			// Validate the format of addr (expected format: host:port)
+			if !strings.Contains(addr, ":") {
+				return nil, fmt.Errorf("invalid address format: %s, expected host:port", addr)
+			}
+			
+			// DNS Override Logic:
+			// This allows overriding DNS resolution for specific addresses.
+			// The dnsResolveMap contains mappings from original addresses (host:port)
+			// to target addresses (host:port). This is useful for:
+			// - Testing against local services
+			// - Bypassing DNS resolution issues
+			// - Routing to specific service instances
+			if dnsOverride, exists := dnsResolveMap[addr]; exists {
+				addr = dnsOverride
+			}
+			
+			return dialer.DialContext(ctx, network, addr)
+		},
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+
+	return &http.Client{
+		Transport: transport,
+		Timeout:   30 * time.Second,
+	}
 }
 
 // GetTestHistory handles GET /api/test/history

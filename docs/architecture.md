@@ -1,6 +1,11 @@
 # Inference-in-a-Box: Architecture Design
 
+> **📋 Navigation:** [🏠 Main README](../README.md) • [🎯 Goals & Vision](../GOALS.md) • [🚀 Getting Started](getting-started.md) • [📖 Usage Guide](usage.md) • [🤖 AI Assistant](../CLAUDE.md)
+
 This document outlines the architecture and design principles of the Inference-in-a-Box platform.
+
+> **🎯 Context:** To understand why these architectural choices were made, see [GOALS.md](../GOALS.md)
+> **🚀 Implementation:** For hands-on deployment of this architecture, see [Getting Started Guide](getting-started.md)
 
 ## Architecture Overview
 

@@ -16,7 +16,7 @@ function AppContent() {
         justifyContent: 'center', 
         alignItems: 'center', 
         height: '100vh',
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+        background: 'linear-gradient(135deg, #1C76FD 0%, #5721F0 100%)'
       }}>
         <div style={{ 
           background: 'white', 
@@ -37,8 +37,8 @@ function AppContent() {
   return (
     <div className="app">
       <header className="header">
-        <h1>AI Model Management</h1>
-        <div className="tenant-info">
+        <h1 style={{ color: '#FFFFFF', fontFamily: 'Poppins, sans-serif', fontWeight: '600' }}>Inference-in-a-Box: Enterprise AI/ML Platform Demo</h1>
+        <div className="tenant-info" style={{ color: 'rgba(255, 255, 255, 0.9)' }}>
           Tenant: {user?.tenant} | User: {user?.name || user?.sub}
         </div>
       </header>

@@ -18,6 +18,7 @@ spec:
   commonName: ai-gateway.inference-in-a-box.local
   dnsNames:
   - ai-gateway.inference-in-a-box.local
+  - "*.inference-in-a-box"
   - ai-gateway
   - localhost
   duration: 8760h  # 1 year

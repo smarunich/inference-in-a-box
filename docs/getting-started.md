@@ -1,162 +1,132 @@
 # Getting Started with Inference-in-a-Box
 
-This guide provides step-by-step instructions to get started with Inference-in-a-Box.
+> **📋 Navigation:** [🏠 Main README](../README.md) • [🎯 Goals & Vision](../GOALS.md) • [📖 Usage Guide](usage.md) • [🏗️ Architecture](architecture.md) • [🤖 AI Assistant](../CLAUDE.md)
+
+This guide provides detailed step-by-step instructions to get the platform up and running.
+
+> **📖 Quick Reference:** For a condensed quick start, see the [Quick Start section in README.md](../README.md#quick-start)
+> **🎯 Why This Project:** To understand the goals and vision behind this platform, start with [GOALS.md](../GOALS.md)
 
 ## Prerequisites
 
-Before you begin, ensure you have the following installed:
+> **📋 System Requirements:** For detailed system requirements and tool versions, see [Prerequisites in README.md](../README.md#prerequisites)
 
-- Docker
-- Kubernetes CLI (kubectl)
-- Kind (Kubernetes in Docker)
-- Helm
-- curl
-- jq
+Ensure you have the following tools installed:
+- Docker 20.10+ with Kubernetes enabled  
+- kubectl 1.24+
+- Kind 0.20+
+- Helm 3.12+
+- curl and jq (for API testing)
 
-## Quick Start
+## Step-by-Step Setup
 
-1. **Clone the repository**
+### 1. Clone and Bootstrap
 
 ```bash
+# Clone the repository
 git clone https://github.com/smarunich/inference-in-a-box.git
 cd inference-in-a-box
-```
 
-2. **Bootstrap the platform**
-
-```bash
+# One-command bootstrap (takes 10-15 minutes)
 ./scripts/bootstrap.sh
 ```
 
-This script will:
+> **🔧 What Bootstrap Does:** For detailed information about what the bootstrap script installs, see [Technology Stack](../README.md#technology-stack)
 
-- Create a new Kind cluster named "inference-in-a-box"
-- Install Istio service mesh (v1.26.2)
-- Install Cert Manager (v1.18.1)
-- Install Knative Serving (v1.18.1)
-- Install KServe (v0.15.2)
-- Deploy the observability stack (Prometheus, Grafana, Kiali)
-- Deploy Envoy Gateway (v1.4.2) and Envoy AI Gateway (v0.2.1)
-- Deploy JWT server for authentication
-- Configure TLS certificates
-- Setup multi-tenant namespaces and deploy sample models
-
-The entire bootstrap process takes about 10-15 minutes to complete.
-
-3. **Access the platform**
+### 2. Verify Installation
 
 ```bash
-# Get JWT tokens for authentication
+# Check cluster is ready
+kubectl get nodes
+
+# Verify core components
+kubectl get pods -A | grep -E "(istio|envoy|kserve|knative)"
+
+# Check sample models are deployed
+kubectl get inferenceservice -A
+```
+
+### 3. Get Authentication Tokens
+
+```bash
+# Get JWT tokens for different tenants
 ./scripts/get-jwt-tokens.sh
 
-# Run interactive demos
+# This creates tokens for tenant-a, tenant-b, and tenant-c
+export TENANT_A_TOKEN="<token-from-script>"
+```
+
+### 4. Access Services
+
+> **🌐 Service Access:** For complete service access information and port forwarding commands, see [Usage Guide](usage.md#accessing-services)
+
+```bash
+# Access management UI
+kubectl port-forward svc/management-service 8085:80
+# Open browser: http://localhost:8085
+```
+
+### 5. Run Interactive Demo
+
+> **🎭 Complete Demo Guide:** For comprehensive demo scenarios and explanations, see [demo.md](../demo.md)
+
+```bash
+# Interactive demo with multiple scenarios
 ./scripts/demo.sh
 ```
 
-The bootstrap script automatically:
-- Creates tenant namespaces (tenant-a, tenant-b, tenant-c)
-- Apply resource quotas
-- Configure network policies
-- Setup Istio authorization policies
-- Deploy JWT authentication
+## Making Your First Inference Request
 
-4. **Deploy models**
+> **📝 Complete API Guide:** For detailed API usage and examples, see [Usage Guide](usage.md#api-examples)
+
+Test the sklearn-iris model:
 
 ```bash
-./scripts/models/deploy-models.sh
+# Get your JWT token first
+export JWT_TOKEN=$(./scripts/get-jwt-tokens.sh | grep "tenant-a" | cut -d' ' -f2)
+
+# Make inference request
+curl -H "Authorization: Bearer $JWT_TOKEN" \
+     -H "x-ai-eg-model: sklearn-iris" \
+     http://localhost:8080/v1/models/sklearn-iris:predict \
+     -d '{"instances": [[5.1, 3.5, 1.4, 0.2]]}'
 ```
-
-This script will deploy sample models:
-- scikit-learn Iris classifier (tenant-a)
-- TensorFlow MNIST classifier (tenant-b)
-- PyTorch ResNet model (tenant-c)
-
-5. **Access the platform**
-
-The bootstrap script automatically sets up port forwarding. You can access:
-
-- **Model Inference API**: http://localhost:8080/v2/models/
-- **Grafana**: http://localhost:3000 (admin/admin)
-- **Prometheus**: http://localhost:9090
-- **Kiali**: http://localhost:20001
-
-## Running the Demo
-
-To explore the platform's capabilities:
-
-```bash
-./scripts/demo.sh
-```
-
-This interactive demo script showcases:
-1. Security & Authentication
-2. Auto-scaling
-3. Canary Deployments
-4. Multi-tenant Isolation
-5. Observability
-
-## Making Inference Requests
-
-You can send inference requests using the provided example script:
-
-```bash
-./examples/inference-requests/sample-requests.sh
-```
-
-Or manually using curl:
-
-```bash
-# Example for sklearn-iris model
-curl -s -X POST \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyLWEiLCJuYW1lIjoiVGVuYW50IEEgVXNlciIsInRlbmFudCI6InRlbmFudC1hIn0.8Xtgw_eSO-fTZexLFVXME5AQ_jJOf615P7VQGahNdDk" \
-  http://localhost:8080/v2/models/sklearn-iris/infer \
-  -d '{"instances": [[5.1, 3.5, 1.4, 0.2]]}' | jq .
-```
-
-## Cleanup
-
-To tear down the platform:
-
-```bash
-./scripts/cleanup.sh
-```
-
-This will:
-- Delete the Kind cluster
-- Clean up Docker resources
-- Remove downloaded binaries
 
 ## Next Steps
 
-After getting familiar with the platform, you may want to:
+After successful setup, explore these key areas:
 
-1. **Deploy your own models** - See documentation in `docs/custom-models.md`
-2. **Customize security settings** - Explore options in `configs/istio/authorization/`
-3. **Extend the observability stack** - Add custom Grafana dashboards or alerts
-4. **Implement CI/CD pipelines** - For automated model deployment
+### Model Publishing
+> **📘 Complete Guide:** See [Model Publishing Guide](model-publishing-guide.md)
 
-## Additional Resources
+Use the Management Service to publish models for external access with rate limiting and authentication.
 
-- [Architecture Documentation](./architecture.md)
-- [Usage Guide](./usage.md)
-- [API Reference](./api-reference.md)
+### Architecture Understanding  
+> **🏗️ Technical Details:** See [Architecture Documentation](architecture.md)
+
+Learn about the dual-gateway design and multi-tenant security.
+
+### Advanced Usage
+> **⚡ API Reference:** See [Management Service API](management-service-api.md)
+
+Explore the full REST API for programmatic model management.
+
+## Cleanup
+
+```bash
+# Complete platform teardown
+./scripts/cleanup.sh
+```
 
 ## Troubleshooting
 
-If you encounter issues:
+> **🔧 Complete Troubleshooting:** For detailed troubleshooting steps, see [README.md - Troubleshooting](../README.md#troubleshooting)
 
-1. Check the logs of the failing component:
+Common verification commands:
 ```bash
-kubectl logs -n <namespace> <pod-name>
-```
+# Check cluster health
+kubectl get pods --all-namespaces | grep -v Running
 
-2. Verify all pods are running:
-```bash
-kubectl get pods -A
-```
-
-3. Check Istio configuration:
-```bash
-istioctl analyze
+# Verify AI Gateway
+kubectl get pods -n envoy-gateway-system
 ```

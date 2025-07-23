@@ -1,6 +1,10 @@
 # CLAUDE.md
 
+> **📋 Navigation:** [🏠 Main README](README.md) • [🎯 Goals & Vision](GOALS.md) • [🚀 Getting Started](docs/getting-started.md) • [📖 Usage Guide](docs/usage.md) • [🏗️ Architecture](docs/architecture.md)
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+> **🎯 Project Context:** This project demonstrates enterprise-grade AI/ML inference patterns. See [GOALS.md](GOALS.md) for complete vision and objectives.
 
 ## Project Overview
 
@@ -72,6 +76,12 @@ curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
   -d '{"config": {"tenantId": "tenant-a", "publicHostname": "api.router.inference-in-a-box"}}' \
   http://localhost:8085/api/models/my-model/publish
 
+# Publish OpenAI-compatible model with token-based rate limiting
+curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"config": {"tenantId": "tenant-a", "publicHostname": "api.router.inference-in-a-box", "modelType": "openai", "rateLimiting": {"tokensPerHour": 100000}}}' \
+  http://localhost:8085/api/models/llama-3-8b/publish
+
 # Update published model configuration
 curl -X PUT -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
@@ -101,6 +111,19 @@ curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
 
 # Get JWT tokens for testing
 ./scripts/get-jwt-tokens.sh
+
+# Test OpenAI-compatible model
+export AI_GATEWAY_URL="http://localhost:8080"
+export JWT_TOKEN="<your-jwt-token>"
+
+# Chat completion request
+curl -H "Authorization: Bearer $JWT_TOKEN" \
+     -H "x-ai-eg-model: llama-3-8b" \
+     $AI_GATEWAY_URL/v1/chat/completions \
+     -d '{
+       "model": "llama-3-8b",
+       "messages": [{"role": "user", "content": "Hello!"}]
+     }'
 ```
 
 ### Build & Container Management
@@ -120,14 +143,15 @@ curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
 # Management Service UI & API
 kubectl port-forward svc/management-service 8085:80
 
-# Observability Stack
-kubectl port-forward -n monitoring svc/prometheus-grafana 3000:80
-kubectl port-forward -n monitoring svc/prometheus-kube-prometheus-prometheus 9090:9090
-kubectl port-forward -n monitoring svc/kiali 20001:20001
+# Observability Stack (see docs/usage.md for complete service access)  
+kubectl port-forward -n monitoring svc/prometheus-grafana 3000:80             # Grafana
+kubectl port-forward -n monitoring svc/prometheus-kube-prometheus-prometheus 9090:9090  # Prometheus
+kubectl port-forward -n monitoring svc/kiali 20001:20001                      # Kiali
 
-# AI Gateway & Auth
-kubectl port-forward -n istio-system svc/istio-ingressgateway 8080:80
-kubectl port-forward -n default svc/jwt-server 8081:8080
+# Service Access (see docs/usage.md for complete reference)
+kubectl port-forward -n envoy-gateway-system svc/envoy-ai-gateway 8080:80     # AI Gateway
+kubectl port-forward svc/management-service 8085:80                           # Management UI/API
+kubectl port-forward -n default svc/jwt-server 8081:8080                      # JWT Server
 ```
 
 ## Architecture
@@ -139,14 +163,19 @@ This platform implements a **dual-gateway architecture** where external traffic 
 
 ### Technology Stack Integration
 - **Kind Cluster**: Local Kubernetes cluster (`inference-in-a-box`)
-- **Envoy AI Gateway**: AI-specific gateway with JWT validation and model routing
+- **Envoy AI Gateway**: AI-specific gateway with JWT validation, model routing, and OpenAI API compatibility
+  - **EnvoyExtensionPolicy**: External processor configuration for AI-specific routing
+  - **Model-aware routing**: Using x-ai-eg-model header for efficient model selection
+  - **Protocol translation**: OpenAI to KServe format conversion
 - **Istio Service Mesh**: Zero-trust networking with automatic mTLS between services
 - **KServe**: Kubernetes-native serverless model serving with auto-scaling
 - **Knative**: Serverless framework enabling scale-to-zero capabilities
 - **Management Service**: Go backend with embedded React frontend for platform administration
   - **Model Publishing**: Full-featured model publishing and management system
   - **Public Hostname Configuration**: Configurable external access via `api.router.inference-in-a-box`
-  - **Rate Limiting**: Per-model rate limiting with configurable limits
+  - **Rate Limiting**: Per-model rate limiting with configurable limits (requests and tokens)
+  - **OpenAI Compatibility**: Automatic detection and configuration for LLM models
+  - **Model Testing**: Interactive inference testing with support for both traditional and OpenAI formats
 
 ### Multi-Tenant Architecture
 - **Tenant Namespaces**: `tenant-a`, `tenant-b`, `tenant-c` with complete resource isolation
@@ -155,18 +184,23 @@ This platform implements a **dual-gateway architecture** where external traffic 
 
 ### Serverless Model Serving
 - **KServe InferenceServices**: Auto-scaling model endpoints with scale-to-zero capabilities
-- **Supported Frameworks**: Scikit-learn, PyTorch, TensorFlow, Hugging Face transformers
+- **Supported Frameworks**: Scikit-learn, PyTorch, TensorFlow, Hugging Face transformers, vLLM, TGI
+- **OpenAI-Compatible Models**: Support for chat completions, completions, and embeddings endpoints
 - **Traffic Management**: Canary deployments, A/B testing, and blue-green deployment patterns
 
 ## Key Directories
 
 ### Configuration Structure
-- `configs/envoy-gateway/` - AI Gateway configurations (GatewayClass, HTTPRoute, Security Policies, Rate Limiting)
+- `configs/envoy-gateway/` - AI Gateway configurations (GatewayClass, HTTPRoute, Security Policies, Rate Limiting, EnvoyExtensionPolicy)
 - `configs/istio/` - Service mesh policies, authorization rules, and routing configurations
 - `configs/kserve/models/` - Model deployment specifications for various ML frameworks
 - `configs/auth/` - JWT server deployment and authentication configuration
 - `configs/management/` - Management service deployment configuration
 - `configs/observability/` - Grafana dashboards and monitoring configuration
+
+### Root Configuration Files
+- `envoydump.json` / `envoydump-latest.json` - Envoy configuration dumps for debugging
+- `httproute.correct` - Sample HTTPRoute with URLRewrite and header modification filters
 
 ### Scripts Directory
 - `scripts/bootstrap.sh` - **Primary deployment script** for complete platform setup
@@ -183,8 +217,11 @@ This platform implements a **dual-gateway architecture** where external traffic 
 - `management/package.json` - NPM scripts for React UI development
 - `management/publishing.go` - Model publishing and management service
 - `management/types.go` - Type definitions including PublishConfig and PublishedModel
+- `management/test_execution.go` - Test execution service for interactive model testing
 - `management/ui/src/components/PublishingForm.js` - React component for model publishing
-- `management/ui/src/components/PublishingList.js` - React component for managing published models
+- `management/ui/src/components/PublishingList.js` - React component for managing published models  
+- `management/ui/src/components/InferenceTest.js` - React component for interactive model testing
+- `scripts/retest.sh` - Quick restart and port-forward for development
 
 ### Examples & Documentation
 - `examples/serverless/` - Serverless configuration examples and templates
@@ -228,3 +265,6 @@ JWT tokens are required for model inference requests. The platform includes a JW
 - **Production Patterns**: Demonstrates enterprise-grade AI/ML deployment practices with security, observability, and multi-tenancy
 - **Management Service**: Full-stack application (Go backend + React frontend) for platform administration
 - **Dual-Gateway Architecture**: External traffic flows through AI Gateway first, then Istio Gateway
+- **OpenAI Compatibility**: Automatic protocol translation for OpenAI → KServe format
+- **Model-Aware Routing**: Use `x-ai-eg-model` header for efficient model selection
+- **Token-Based Rate Limiting**: LLM models support token-based rate limiting alongside request-based limits

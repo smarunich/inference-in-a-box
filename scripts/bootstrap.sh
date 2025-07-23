@@ -431,7 +431,8 @@ install_envoy_gateway() {
         --version ${ENVOY_GATEWAY_VERSION} \
         --namespace envoy-gateway-system \
         --create-namespace
-    
+    kubectl label namespace envoy-gateway-system --overwrite=true istio-injection=enabled
+
     # Wait for Envoy Gateway to be ready
     log "Waiting for Envoy Gateway to be ready..."
     kubectl wait --timeout=2m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available
@@ -476,7 +477,7 @@ install_envoy_ai_gateway() {
     kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/gateway/ai-gateway.yaml
     
     # Apply Backend resources
-    kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/backends/backends.yaml
+    #kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/backends/backends.yaml
     #kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/backends/ai-service-backends.yaml
     
     # Apply Security policies
