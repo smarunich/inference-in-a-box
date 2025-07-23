@@ -189,6 +189,43 @@ func (s *AdminService) GetResources(c *gin.Context) {
 		istioGateways = []map[string]interface{}{}
 	}
 
+	// Get additional Istio resources
+	destinationRules, err := s.k8sClient.GetDestinationRules("")
+	if err != nil {
+		destinationRules = []map[string]interface{}{}
+	}
+
+	serviceEntries, err := s.k8sClient.GetServiceEntries("")
+	if err != nil {
+		serviceEntries = []map[string]interface{}{}
+	}
+
+	authorizationPolicies, err := s.k8sClient.GetAuthorizationPolicies("")
+	if err != nil {
+		authorizationPolicies = []map[string]interface{}{}
+	}
+
+	peerAuthentications, err := s.k8sClient.GetPeerAuthentications("")
+	if err != nil {
+		peerAuthentications = []map[string]interface{}{}
+	}
+
+	// Get KServe resources
+	inferenceServices, err := s.k8sClient.GetInferenceServices("")
+	if err != nil {
+		inferenceServices = []map[string]interface{}{}
+	}
+
+	servingRuntimes, err := s.k8sClient.GetServingRuntimes("")
+	if err != nil {
+		servingRuntimes = []map[string]interface{}{}
+	}
+
+	clusterServingRuntimes, err := s.k8sClient.GetClusterServingRuntimes()
+	if err != nil {
+		clusterServingRuntimes = []map[string]interface{}{}
+	}
+
 
 	// Convert to response format
 	var podInfos []PodInfo
@@ -411,6 +448,216 @@ func (s *AdminService) GetResources(c *gin.Context) {
 		})
 	}
 
+	// Convert DestinationRules to response format
+	var destinationRuleInfos []DestinationRuleInfo
+	for _, dr := range destinationRules {
+		metadata := dr["metadata"].(map[string]interface{})
+		spec := dr["spec"].(map[string]interface{})
+		
+		host := ""
+		if h, ok := spec["host"].(string); ok {
+			host = h
+		}
+		
+		var subsets []string
+		if subsetsData, ok := spec["subsets"].([]interface{}); ok {
+			for _, subset := range subsetsData {
+				if s, ok := subset.(map[string]interface{}); ok {
+					if name, ok := s["name"].(string); ok {
+						subsets = append(subsets, name)
+					}
+				}
+			}
+		}
+		
+		destinationRuleInfos = append(destinationRuleInfos, DestinationRuleInfo{
+			Name:      metadata["name"].(string),
+			Namespace: metadata["namespace"].(string),
+			Host:      host,
+			Subsets:   subsets,
+			CreatedAt: parseTime(metadata["creationTimestamp"].(string)),
+		})
+	}
+
+	// Convert ServiceEntries to response format
+	var serviceEntryInfos []ServiceEntryInfo
+	for _, se := range serviceEntries {
+		metadata := se["metadata"].(map[string]interface{})
+		spec := se["spec"].(map[string]interface{})
+		
+		var hosts []string
+		if hostsData, ok := spec["hosts"].([]interface{}); ok {
+			for _, host := range hostsData {
+				hosts = append(hosts, host.(string))
+			}
+		}
+		
+		location := ""
+		if loc, ok := spec["location"].(string); ok {
+			location = loc
+		}
+		
+		serviceEntryInfos = append(serviceEntryInfos, ServiceEntryInfo{
+			Name:      metadata["name"].(string),
+			Namespace: metadata["namespace"].(string),
+			Hosts:     hosts,
+			Location:  location,
+			CreatedAt: parseTime(metadata["creationTimestamp"].(string)),
+		})
+	}
+
+	// Convert AuthorizationPolicies to response format
+	var authorizationPolicyInfos []AuthorizationPolicyInfo
+	for _, ap := range authorizationPolicies {
+		metadata := ap["metadata"].(map[string]interface{})
+		spec := ap["spec"].(map[string]interface{})
+		
+		action := ""
+		if a, ok := spec["action"].(string); ok {
+			action = a
+		}
+		
+		rules := 0
+		if rulesData, ok := spec["rules"].([]interface{}); ok {
+			rules = len(rulesData)
+		}
+		
+		authorizationPolicyInfos = append(authorizationPolicyInfos, AuthorizationPolicyInfo{
+			Name:      metadata["name"].(string),
+			Namespace: metadata["namespace"].(string),
+			Action:    action,
+			Rules:     rules,
+			CreatedAt: parseTime(metadata["creationTimestamp"].(string)),
+		})
+	}
+
+	// Convert PeerAuthentications to response format
+	var peerAuthenticationInfos []PeerAuthenticationInfo
+	for _, pa := range peerAuthentications {
+		metadata := pa["metadata"].(map[string]interface{})
+		spec := pa["spec"].(map[string]interface{})
+		
+		mode := ""
+		if mtls, ok := spec["mtls"].(map[string]interface{}); ok {
+			if m, ok := mtls["mode"].(string); ok {
+				mode = m
+			}
+		}
+		
+		peerAuthenticationInfos = append(peerAuthenticationInfos, PeerAuthenticationInfo{
+			Name:      metadata["name"].(string),
+			Namespace: metadata["namespace"].(string),
+			Mode:      mode,
+			CreatedAt: parseTime(metadata["creationTimestamp"].(string)),
+		})
+	}
+
+	// Convert InferenceServices to response format
+	var inferenceServiceInfos []InferenceServiceInfo
+	for _, is := range inferenceServices {
+		metadata := is["metadata"].(map[string]interface{})
+		
+		ready := false
+		url := ""
+		framework := ""
+		
+		if status, ok := is["status"].(map[string]interface{}); ok {
+			if conditions, ok := status["conditions"].([]interface{}); ok {
+				for _, condition := range conditions {
+					if c, ok := condition.(map[string]interface{}); ok {
+						if c["type"].(string) == "Ready" && c["status"].(string) == "True" {
+							ready = true
+							break
+						}
+					}
+				}
+			}
+			if u, ok := status["url"].(string); ok {
+				url = u
+			}
+		}
+		
+		if spec, ok := is["spec"].(map[string]interface{}); ok {
+			if predictor, ok := spec["predictor"].(map[string]interface{}); ok {
+				for key := range predictor {
+					if key != "serviceAccountName" && key != "containers" {
+						framework = key
+						break
+					}
+				}
+			}
+		}
+		
+		inferenceServiceInfos = append(inferenceServiceInfos, InferenceServiceInfo{
+			Name:      metadata["name"].(string),
+			Namespace: metadata["namespace"].(string),
+			Ready:     ready,
+			URL:       url,
+			Framework: framework,
+			CreatedAt: parseTime(metadata["creationTimestamp"].(string)),
+		})
+	}
+
+	// Convert ServingRuntimes to response format
+	var servingRuntimeInfos []ServingRuntimeInfo
+	for _, sr := range servingRuntimes {
+		metadata := sr["metadata"].(map[string]interface{})
+		spec := sr["spec"].(map[string]interface{})
+		
+		disabled := false
+		if d, ok := spec["disabled"].(bool); ok {
+			disabled = d
+		}
+		
+		var modelFormat []string
+		if supportedModelFormats, ok := spec["supportedModelFormats"].([]interface{}); ok {
+			for _, format := range supportedModelFormats {
+				if f, ok := format.(map[string]interface{}); ok {
+					if name, ok := f["name"].(string); ok {
+						modelFormat = append(modelFormat, name)
+					}
+				}
+			}
+		}
+		
+		servingRuntimeInfos = append(servingRuntimeInfos, ServingRuntimeInfo{
+			Name:        metadata["name"].(string),
+			Namespace:   metadata["namespace"].(string),
+			Disabled:    disabled,
+			ModelFormat: modelFormat,
+			CreatedAt:   parseTime(metadata["creationTimestamp"].(string)),
+		})
+	}
+
+	// Convert ClusterServingRuntimes to response format
+	var clusterServingRuntimeInfos []ClusterServingRuntimeInfo
+	for _, csr := range clusterServingRuntimes {
+		metadata := csr["metadata"].(map[string]interface{})
+		spec := csr["spec"].(map[string]interface{})
+		
+		disabled := false
+		if d, ok := spec["disabled"].(bool); ok {
+			disabled = d
+		}
+		
+		var modelFormat []string
+		if supportedModelFormats, ok := spec["supportedModelFormats"].([]interface{}); ok {
+			for _, format := range supportedModelFormats {
+				if f, ok := format.(map[string]interface{}); ok {
+					if name, ok := f["name"].(string); ok {
+						modelFormat = append(modelFormat, name)
+					}
+				}
+			}
+		}
+		
+		clusterServingRuntimeInfos = append(clusterServingRuntimeInfos, ClusterServingRuntimeInfo{
+			Name:        metadata["name"].(string),
+			Disabled:    disabled,
+			ModelFormat: modelFormat,
+			CreatedAt:   parseTime(metadata["creationTimestamp"].(string)),
+		})
+	}
 
 	c.JSON(http.StatusOK, AdminResourcesResponse{
 		Pods:            podInfos,
@@ -419,6 +666,13 @@ func (s *AdminService) GetResources(c *gin.Context) {
 		HTTPRoutes:      httpRouteInfos,
 		VirtualServices: virtualServiceInfos,
 		IstioGateways:   istioGatewayInfos,
+		DestinationRules: destinationRuleInfos,
+		ServiceEntries:  serviceEntryInfos,
+		AuthorizationPolicies: authorizationPolicyInfos,
+		PeerAuthentications: peerAuthenticationInfos,
+		InferenceServices: inferenceServiceInfos,
+		ServingRuntimes: servingRuntimeInfos,
+		ClusterServingRuntimes: clusterServingRuntimeInfos,
 	})
 }
 

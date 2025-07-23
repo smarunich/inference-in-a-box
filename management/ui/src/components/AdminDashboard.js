@@ -32,8 +32,7 @@ const AdminDashboard = () => {
 
   // Platform Operator Concerns: Infrastructure, resources, and system administration
   const platformTabs = [
-    { id: 'system', label: 'System Overview', icon: Shield, component: AdminSystem, description: 'Monitor cluster health, nodes, namespaces, and deployment status' },
-    { id: 'resources', label: 'Cluster Resources', icon: Users, component: AdminResources, description: 'Monitor pods, services, gateways, and networking resources' },
+    { id: 'resources', label: 'Platform Navigator', icon: Users, component: AdminResources, description: 'Navigate and explore AI/ML inference platform resources including Istio and KServe components' },
     { id: 'kubectl', label: 'System Console', icon: Terminal, component: AdminKubectl, description: 'Execute kubectl commands and system operations' },
   ];
 

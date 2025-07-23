@@ -220,10 +220,23 @@ type AdminTenantsResponse struct {
 type AdminResourcesResponse struct {
 	Pods             []PodInfo             `json:"pods"`
 	Services         []ServiceInfo         `json:"services"`
+	
+	// Gateway API Resources
 	Gateways         []GatewayInfo         `json:"gateways"`
 	HTTPRoutes       []HTTPRouteInfo       `json:"httpRoutes"`
+	
+	// Istio Resources
 	VirtualServices  []VirtualServiceInfo  `json:"virtualServices"`
 	IstioGateways    []IstioGatewayInfo    `json:"istioGateways"`
+	DestinationRules []DestinationRuleInfo `json:"destinationRules"`
+	ServiceEntries   []ServiceEntryInfo    `json:"serviceEntries"`
+	AuthorizationPolicies []AuthorizationPolicyInfo `json:"authorizationPolicies"`
+	PeerAuthentications []PeerAuthenticationInfo `json:"peerAuthentications"`
+	
+	// KServe Resources
+	InferenceServices []InferenceServiceInfo `json:"inferenceServices"`
+	ServingRuntimes  []ServingRuntimeInfo   `json:"servingRuntimes"`
+	ClusterServingRuntimes []ClusterServingRuntimeInfo `json:"clusterServingRuntimes"`
 }
 
 // PodInfo represents pod information
@@ -279,6 +292,68 @@ type IstioGatewayInfo struct {
 	Namespace string    `json:"namespace"`
 	Servers   []string  `json:"servers"`
 	Selector  map[string]string `json:"selector"`
+	CreatedAt time.Time `json:"created"`
+}
+
+// DestinationRuleInfo represents Istio DestinationRule information
+type DestinationRuleInfo struct {
+	Name      string    `json:"name"`
+	Namespace string    `json:"namespace"`
+	Host      string    `json:"host"`
+	Subsets   []string  `json:"subsets"`
+	CreatedAt time.Time `json:"created"`
+}
+
+// ServiceEntryInfo represents Istio ServiceEntry information
+type ServiceEntryInfo struct {
+	Name      string    `json:"name"`
+	Namespace string    `json:"namespace"`
+	Hosts     []string  `json:"hosts"`
+	Location  string    `json:"location"`
+	CreatedAt time.Time `json:"created"`
+}
+
+// AuthorizationPolicyInfo represents Istio AuthorizationPolicy information
+type AuthorizationPolicyInfo struct {
+	Name      string    `json:"name"`
+	Namespace string    `json:"namespace"`
+	Action    string    `json:"action"`
+	Rules     int       `json:"rules"`
+	CreatedAt time.Time `json:"created"`
+}
+
+// PeerAuthenticationInfo represents Istio PeerAuthentication information
+type PeerAuthenticationInfo struct {
+	Name      string    `json:"name"`
+	Namespace string    `json:"namespace"`
+	Mode      string    `json:"mode"`
+	CreatedAt time.Time `json:"created"`
+}
+
+// InferenceServiceInfo represents KServe InferenceService information
+type InferenceServiceInfo struct {
+	Name      string    `json:"name"`
+	Namespace string    `json:"namespace"`
+	Ready     bool      `json:"ready"`
+	URL       string    `json:"url"`
+	Framework string    `json:"framework"`
+	CreatedAt time.Time `json:"created"`
+}
+
+// ServingRuntimeInfo represents KServe ServingRuntime information
+type ServingRuntimeInfo struct {
+	Name      string    `json:"name"`
+	Namespace string    `json:"namespace"`
+	Disabled  bool      `json:"disabled"`
+	ModelFormat []string `json:"modelFormat"`
+	CreatedAt time.Time `json:"created"`
+}
+
+// ClusterServingRuntimeInfo represents KServe ClusterServingRuntime information
+type ClusterServingRuntimeInfo struct {
+	Name      string    `json:"name"`
+	Disabled  bool      `json:"disabled"`
+	ModelFormat []string `json:"modelFormat"`
 	CreatedAt time.Time `json:"created"`
 }
 
