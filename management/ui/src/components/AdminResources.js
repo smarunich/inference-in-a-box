@@ -317,7 +317,7 @@ const AdminResources = () => {
 
   return (
     <ErrorBoundary onRetry={fetchResources}>
-      <div className="card" style={{ height: 'calc(100vh - 200px)', display: 'flex', flexDirection: 'column' }}>
+      <div className="card" style={{ height: 'calc(100vh - 160px)', display: 'flex', flexDirection: 'column', margin: 0 }}>
         {/* Header */}
         <div style={{ 
           display: 'flex', 

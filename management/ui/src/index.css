@@ -47,9 +47,8 @@ code {
 .main-content {
   flex: 1;
   padding: 2rem;
-  max-width: 1200px;
-  margin: 0 auto;
   width: 100%;
+  max-width: none;
 }
 
 /* Navigation */
@@ -703,6 +702,39 @@ code {
 .command-output.error {
   background: #fef2f2;
   color: #991b1b;
+}
+
+/* Wide screen optimizations */
+@media (min-width: 1400px) {
+  .feature-grid {
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  }
+  
+  .system-status-grid {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
+  
+  .stats-grid {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
+  
+  .config-grid {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
+  
+  .config-grid-2 {
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  }
+}
+
+@media (min-width: 1920px) {
+  .main-content {
+    padding: 2rem 3rem;
+  }
+  
+  .feature-grid {
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  }
 }
 
 /* Responsive */

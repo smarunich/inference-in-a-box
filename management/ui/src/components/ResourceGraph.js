@@ -380,14 +380,15 @@ const ResourceGraph = ({ resourceGraph, onRefresh, isRefreshing }) => {
   }
 
   return (
-    <div style={{ height: '600px', display: 'flex' }}>
+    <div style={{ height: '100%', display: 'flex' }}>
       {/* Filters Panel */}
       <div style={{ 
-        width: '320px', 
+        width: '300px', 
         borderRight: '1px solid #e5e7eb', 
         backgroundColor: '#ffffff', 
         padding: '1rem', 
-        overflowY: 'auto' 
+        overflowY: 'auto',
+        flexShrink: 0
       }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
           {/* Header */}
