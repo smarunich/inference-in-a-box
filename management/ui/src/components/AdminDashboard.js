@@ -9,7 +9,8 @@ import AdminResources from './AdminResources';
 import AdminKubectl from './AdminKubectl';
 import PublishingDashboard from './PublishingDashboard';
 import DeveloperConsole from './DeveloperConsole';
-import { LogOut, Shield, Database, Activity, Terminal, FileText, Settings, Users, Globe, Code } from 'lucide-react';
+import ModelsUsage from './ModelsUsage';
+import { LogOut, Shield, Database, Activity, Terminal, FileText, Settings, Users, Globe, Code, BarChart3 } from 'lucide-react';
 
 const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState('models');
@@ -21,7 +22,7 @@ const AdminDashboard = () => {
     { id: 'models', label: 'Model Management', icon: Database, component: ModelList, description: 'View, manage, and monitor AI/ML models across all tenants' },
     { id: 'inference', label: 'Test Model Inference', icon: Activity, component: InferenceTest, description: 'Test model APIs and validate inference endpoints' },
     { id: 'publishing', label: 'Model Publishing', icon: Globe, component: PublishingDashboard, description: 'Publish models to external API endpoints with authentication' },
-
+    { id: 'usage', label: 'Models Usage', icon: BarChart3, component: ModelsUsage, description: 'Monitor model performance, usage analytics, and cost tracking across deployments' },
   ];
 
   // Developer Concerns: API access, usage monitoring, and application debugging
