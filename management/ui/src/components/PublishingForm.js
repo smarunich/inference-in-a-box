@@ -139,7 +139,7 @@ const PublishingForm = ({ modelName, onComplete, onCancel }) => {
       
       // If admin is publishing to a different tenant, include tenant in request
       if (user?.isAdmin && formData.tenantId !== tenantInfo?.tenant) {
-        requestBody.config.tenantID = formData.tenantId;
+        requestBody.config.tenantId = formData.tenantId;
       }
       
       const response = isPublished 
