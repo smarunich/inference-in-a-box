@@ -15,6 +15,22 @@ import {
   RefreshCw
 } from 'lucide-react';
 
+// Add the spin animation keyframes
+const spinKeyframes = `
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+`;
+
+// Inject the CSS into the document head if not already present
+if (typeof document !== 'undefined' && !document.querySelector('#spin-animation')) {
+  const style = document.createElement('style');
+  style.id = 'spin-animation';
+  style.textContent = spinKeyframes;
+  document.head.appendChild(style);
+}
+
 const FilterPanel = ({ 
   resourceGraph, 
   filters, 
@@ -216,7 +232,12 @@ const FilterPanel = ({
               gap: '0.25rem'
             }}
           >
-            <RefreshCw size={12} className={isRefreshing ? 'animate-spin' : ''} />
+            <RefreshCw
+              size={12}
+              style={isRefreshing ? {
+                animation: 'spin 1s linear infinite'
+              } : {}}
+            />
             {isRefreshing ? 'Refreshing...' : 'Refresh'}
           </button>
           <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>

@@ -199,8 +199,25 @@ const ResourceGraph = ({ resourceGraph, onRefresh, isRefreshing }) => {
   // Filter resources to focus on Gateway API, Envoy Gateway, and related services
   const isRelevantResource = (node) => {
     const type = node.type.toLowerCase();
+    const namespace = node.namespace || 'all';
+    const isHealthy = node.health === 'healthy';
     
-    // Include all resource types for comprehensive view
+    // Filter by selected tiers
+    const tier = getTierForType(type);
+    if (!selectedTiers.includes(tier)) {
+      return false;
+    }
+    
+    // Filter by selected namespace
+    if (selectedNamespace !== 'all' && namespace !== selectedNamespace) {
+      return false;
+    }
+    
+    // Filter by health status
+    if (showHealthyOnly && !isHealthy) {
+      return false;
+    }
+    
     return true;
   };
 

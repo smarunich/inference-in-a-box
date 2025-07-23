@@ -255,10 +255,22 @@ func (s *TestExecutionService) createHTTPClient(settings *ConnectionSettings) *h
 	// Create custom transport with DNS override
 	transport := &http.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			// Check if we have a DNS override for this address
+			// Validate the format of addr (expected format: host:port)
+			if !strings.Contains(addr, ":") {
+				return nil, fmt.Errorf("invalid address format: %s, expected host:port", addr)
+			}
+			
+			// DNS Override Logic:
+			// This allows overriding DNS resolution for specific addresses.
+			// The dnsResolveMap contains mappings from original addresses (host:port)
+			// to target addresses (host:port). This is useful for:
+			// - Testing against local services
+			// - Bypassing DNS resolution issues
+			// - Routing to specific service instances
 			if dnsOverride, exists := dnsResolveMap[addr]; exists {
 				addr = dnsOverride
 			}
+			
 			return dialer.DialContext(ctx, network, addr)
 		},
 		MaxIdleConns:          100,

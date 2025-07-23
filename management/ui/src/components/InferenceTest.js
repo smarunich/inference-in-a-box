@@ -98,6 +98,7 @@ const InferenceTest = () => {
       setAiGatewayInfo(response.data);
     } catch (error) {
       console.error('Error fetching gateway info:', error);
+      toast.error('Failed to fetch AI Gateway information');
       setAiGatewayInfo(null);
     }
   };

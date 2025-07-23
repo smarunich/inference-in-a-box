@@ -84,6 +84,7 @@ const AdminResources = () => {
         servingRuntimes: [],
         clusterServingRuntimes: []
       });
+      // Only update discovery time on successful fetch
       setLastDiscoveryTime(new Date().toISOString());
     } catch (error) {
       toast.error('Failed to fetch resources');
@@ -131,7 +132,7 @@ const AdminResources = () => {
           status = 'healthy'; // Default for other resources
         }
 
-        const nodeId = `${type}-${resource.namespace || 'default'}-${resource.name}-${index}`;
+        const nodeId = `${type}-${resource.namespace || 'default'}-${resource.name}-${resource.uid || resource.id || index}`;
         
         nodes.push({
           id: nodeId,
