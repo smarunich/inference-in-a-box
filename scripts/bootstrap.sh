@@ -431,7 +431,10 @@ install_envoy_gateway() {
         --version ${ENVOY_GATEWAY_VERSION} \
         --namespace envoy-gateway-system \
         --create-namespace
+
     kubectl label namespace envoy-gateway-system --overwrite=true istio-injection=enabled
+
+    kubectl patch service -n envoy-gateway-system envoy-gateway --type strategic --patch '{"spec":{"ports":[{"port":18000,"appProtocol":"tls"}]}}'
 
     # Wait for Envoy Gateway to be ready
     log "Waiting for Envoy Gateway to be ready..."
@@ -460,7 +463,7 @@ install_envoy_ai_gateway() {
     kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/release/v0.2/manifests/envoy-gateway-config/redis.yaml
     kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/release/v0.2/manifests/envoy-gateway-config/config.yaml
     kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/release/v0.2/manifests/envoy-gateway-config/rbac.yaml
-    
+
     # Restart Envoy Gateway and wait for it to be ready
     log "Restarting Envoy Gateway..."
     kubectl rollout restart -n envoy-gateway-system deployment/envoy-gateway
@@ -476,6 +479,13 @@ install_envoy_ai_gateway() {
     kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/gateway/gatewayclass.yaml
     kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/gateway/ai-gateway.yaml
     
+    kubectl patch gatewayclass eg --type merge --patch '{"spec":{"parametersRef":{"group":"gateway.envoyproxy.io","kind":"EnvoyProxy","namespace":"envoy-gateway-system","name":"data-plane-sidecars"}}}'
+    kubectl patch gatewayclass ai-gateway-class --type merge --patch '{"spec":{"parametersRef":{"group":"gateway.envoyproxy.io","kind":"EnvoyProxy","namespace":"envoy-gateway-system","name":"data-plane-sidecars"}}}'
+
+    # Restart Envoy Gateway and wait for it to be ready
+    log "Restarting Envoy Gateway..."
+    kubectl rollout restart -n envoy-gateway-system deployment/envoy-gateway
+
     # Apply Backend resources
     #kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/backends/backends.yaml
     #kubectl apply -f ${PROJECT_DIR}/configs/envoy-gateway/backends/ai-service-backends.yaml
