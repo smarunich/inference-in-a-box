@@ -27,13 +27,13 @@ const AdminDashboard = () => {
   // Developer Concerns: API access, usage monitoring, and application debugging
   const developerTabs = [
     { id: 'developer', label: 'Developer Console', icon: Code, component: DeveloperConsole, description: 'Test published models with external API calls and view code examples' },
-    { id: 'logs', label: 'Application Logs', icon: FileText, component: AdminLogs, description: 'View application logs and debugging information for model services' },
+    { id: 'logs', label: 'Model Service Logs', icon: FileText, component: AdminLogs, description: 'View inference logs and debugging information for model services and deployments' },
   ];
 
   // Platform Operator Concerns: Infrastructure, resources, and system administration
   const platformTabs = [
     { id: 'resources', label: 'Platform Navigator', icon: Users, component: AdminResources, description: 'Navigate and explore AI/ML inference platform resources including Istio and KServe components' },
-    { id: 'kubectl', label: 'System Console', icon: Terminal, component: AdminKubectl, description: 'Execute kubectl commands and system operations' },
+    { id: 'kubectl', label: 'Platform Console', icon: Terminal, component: AdminKubectl, description: 'Execute kubectl commands and platform operations' },
   ];
 
   const allTabs = [...mlopsTabs, ...developerTabs, ...platformTabs];
