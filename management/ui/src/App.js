@@ -37,7 +37,7 @@ function AppContent() {
   return (
     <div className="app">
       <header className="header">
-        <h1 style={{ color: '#FFFFFF', fontFamily: 'Poppins, sans-serif', fontWeight: '600' }}>Inference-in-a-Box</h1>
+        <h1 style={{ color: '#FFFFFF', fontFamily: 'Poppins, sans-serif', fontWeight: '600' }}>Inference-in-a-Box: Enterprise AI/ML Platform Demo</h1>
         <div className="tenant-info" style={{ color: 'rgba(255, 255, 255, 0.9)' }}>
           Tenant: {user?.tenant} | User: {user?.name || user?.sub}
         </div>
