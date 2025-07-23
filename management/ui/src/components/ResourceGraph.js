@@ -41,14 +41,14 @@ const TIERS = {
   'Security Layer': ['BackendSecurityPolicy', 'SecurityPolicy', 'AuthorizationPolicy', 'PeerAuthentication']
 };
 
-// Colors for each tier
+// Colors for each tier using Tetrate brand palette - optimized for readability
 const TIER_COLORS = {
-  'Gateway Infrastructure': { bg: '#dbeafe', border: '#3b82f6', text: '#1e40af' },
-  'Gateway Layer': { bg: '#dcfce7', border: '#22c55e', text: '#16a34a' },
-  'Routing Layer': { bg: '#f3e8ff', border: '#a855f7', text: '#7c3aed' },
-  'Backend Layer': { bg: '#fed7aa', border: '#f97316', text: '#ea580c' },
-  'Service Layer': { bg: '#cffafe', border: '#06b6d4', text: '#0891b2' },
-  'Security Layer': { bg: '#fecaca', border: '#ef4444', text: '#dc2626' }
+  'Gateway Infrastructure': { bg: 'rgba(28, 118, 253, 0.08)', border: '#1C76FD', text: '#0A4FCF' },
+  'Gateway Layer': { bg: 'rgba(109, 194, 139, 0.08)', border: '#6DC28B', text: '#4A9F6A' },
+  'Routing Layer': { bg: 'rgba(87, 33, 240, 0.08)', border: '#5721F0', text: '#4519C7' },
+  'Backend Layer': { bg: 'rgba(255, 203, 92, 0.08)', border: '#FFCB5C', text: '#CC9B2E' },
+  'Service Layer': { bg: 'rgba(28, 118, 253, 0.08)', border: '#1C76FD', text: '#0A4FCF' },
+  'Security Layer': { bg: 'rgba(243, 104, 99, 0.08)', border: '#F36863', text: '#E04842' }
 };
 
 // Custom node component with tier-based styling
@@ -89,11 +89,11 @@ const TierNode = ({ data }) => {
 
     switch (status) {
       case 'healthy':
-        return <div style={{...statusStyle, backgroundColor: '#22c55e'}} />;
+        return <div style={{...statusStyle, backgroundColor: '#6DC28B'}} />;
       case 'warning':
-        return <div style={{...statusStyle, backgroundColor: '#f59e0b'}} />;
+        return <div style={{...statusStyle, backgroundColor: '#FFCB5C'}} />;
       case 'error':
-        return <div style={{...statusStyle, backgroundColor: '#ef4444'}} />;
+        return <div style={{...statusStyle, backgroundColor: '#F36863'}} />;
       default:
         return <div style={{...statusStyle, backgroundColor: '#6b7280'}} />;
     }
@@ -295,15 +295,15 @@ const ResourceGraph = ({ resourceGraph, onRefresh, isRefreshing }) => {
             },
             label: link.label || link.type?.replace(/-/g, ' ') || '',
             style: { 
-              stroke: '#6366f1', 
+              stroke: '#5721F0', 
               strokeWidth: 2,
               strokeDasharray: link.type?.includes('security') ? '5,5' : undefined
             },
             labelStyle: { 
-              fill: '#4f46e5', 
+              fill: '#0A0D0F', 
               fontWeight: 500, 
               fontSize: 11,
-              backgroundColor: 'rgba(255, 255, 255, 0.8)',
+              backgroundColor: 'rgba(255, 255, 255, 0.95)',
               borderRadius: '4px',
               padding: '2px 4px'
             }
@@ -553,17 +553,17 @@ const ResourceGraph = ({ resourceGraph, onRefresh, isRefreshing }) => {
             minZoom={0.1}
             maxZoom={2}
             defaultEdgeOptions={{
-              style: { stroke: '#6366f1', strokeWidth: 2 }
+              style: { stroke: '#5721F0', strokeWidth: 2 }
             }}
             style={{ backgroundColor: '#f9fafb' }}
           >
             <Background gap={20} size={1} color="#e5e7eb" />
             <Controls />
             <MiniMap 
-              nodeColor="#6366f1" 
+              nodeColor="#FF5500" 
               maskColor="rgba(0, 0, 0, 0.2)"
               style={{ 
-                backgroundColor: 'rgba(255, 255, 255, 0.8)',
+                backgroundColor: 'rgba(255, 255, 255, 0.95)',
                 border: '1px solid #e5e7eb',
                 borderRadius: '8px'
               }}

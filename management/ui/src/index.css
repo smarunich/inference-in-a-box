@@ -4,14 +4,37 @@
   box-sizing: border-box;
 }
 
+/* Import Tetrate's primary font - Poppins */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+
+/* Tetrate Brand Color Variables */
+:root {
+  /* Primary Palette */
+  --tetrate-orange: #FF5500;
+  --tetrate-black: #0A0D0F;
+  --tetrate-white: #FFFFFF;
+  --tetrate-light-gray: #F5F5F5;
+  
+  /* Supporting Palette */
+  --tetrate-purple: #5721F0;
+  --tetrate-blue: #1C76FD;
+  --tetrate-yellow: #FFCB5C;
+  --tetrate-red: #F36863;
+  --tetrate-green: #6DC28B;
+  
+  /* Derived Colors */
+  --tetrate-orange-dark: #E64D00;
+  --tetrate-orange-light: rgba(255, 85, 0, 0.1);
+}
+
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+  font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #f8fafc;
-  color: #1a202c;
+  background-color: #F5F5F5; /* Tetrate Light Gray */
+  color: #0A0D0F; /* Tetrate Black */
 }
 
 code {
@@ -27,8 +50,8 @@ code {
 }
 
 .header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  background: #0A0D0F; /* Tetrate Black for clean professional look */
+  color: #FFFFFF; /* Tetrate White */
   padding: 1rem 2rem;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
@@ -76,8 +99,8 @@ code {
 }
 
 .nav-tab.active {
-  color: #667eea;
-  border-bottom-color: #667eea;
+  color: #FF5500; /* Tetrate Orange */
+  border-bottom-color: #FF5500; /* Tetrate Orange */
 }
 
 /* Cards */
@@ -91,9 +114,9 @@ code {
 
 .card h2 {
   font-size: 1.25rem;
-  font-weight: 600;
+  font-weight: 600; /* Poppins SemiBold */
   margin-bottom: 1rem;
-  color: #1a202c;
+  color: #0A0D0F; /* Tetrate Black */
 }
 
 /* Publishing Components */
@@ -150,39 +173,41 @@ code {
 }
 
 .btn-primary {
-  background: #667eea;
-  color: white;
+  background: #FF5500; /* Tetrate Orange */
+  color: #FFFFFF; /* Tetrate White */
 }
 
 .btn-primary:hover {
-  background: #5a67d8;
+  background: #E64D00; /* Darker Orange on hover */
 }
 
 .btn-secondary {
-  background: #e2e8f0;
-  color: #475569;
+  background: #F5F5F5; /* Tetrate Light Gray */
+  color: #0A0D0F; /* Tetrate Black */
+  border: 1px solid #e2e8f0;
 }
 
 .btn-secondary:hover {
-  background: #cbd5e0;
+  background: #FFFFFF; /* Tetrate White */
+  border-color: #FF5500; /* Tetrate Orange border on hover */
 }
 
 .btn-danger {
-  background: #f56565;
-  color: white;
+  background: #F36863; /* Tetrate Red */
+  color: #FFFFFF; /* Tetrate White */
 }
 
 .btn-danger:hover {
-  background: #e53e3e;
+  background: #E55550; /* Darker Red on hover */
 }
 
 .btn-success {
-  background: #48bb78;
-  color: white;
+  background: #6DC28B; /* Tetrate Green */
+  color: #FFFFFF; /* Tetrate White */
 }
 
 .btn-success:hover {
-  background: #38a169;
+  background: #5AB377; /* Darker Green on hover */
 }
 
 .btn-sm {
@@ -213,8 +238,8 @@ code {
 
 .form-input:focus {
   outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  border-color: #FF5500; /* Tetrate Orange */
+  box-shadow: 0 0 0 3px rgba(255, 85, 0, 0.1); /* Tetrate Orange shadow */
 }
 
 .form-select {
@@ -273,13 +298,13 @@ code {
 }
 
 .status-ready {
-  background: #d1fae5;
-  color: #065f46;
+  background: rgba(109, 194, 139, 0.1); /* Tetrate Green background */
+  color: var(--tetrate-green);
 }
 
 .status-not-ready {
-  background: #fee2e2;
-  color: #991b1b;
+  background: rgba(243, 104, 99, 0.1); /* Tetrate Red background */
+  color: var(--tetrate-red);
 }
 
 .status-unknown {
