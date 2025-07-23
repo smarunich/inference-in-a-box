@@ -72,8 +72,11 @@ const Login = () => {
   return (
     <div className="login-container">
       <div className="login-card">
-        <h1 className="login-title">AI Model Management</h1>
-        <p style={{ textAlign: 'center', color: '#6b7280', marginBottom: '1.5rem' }}>
+        <h1 className="login-title" style={{ color: '#0A0D0F', fontFamily: 'Poppins, sans-serif', fontWeight: '600' }}>Inference-in-a-Box</h1>
+        <p style={{ textAlign: 'center', color: '#0A0D0F', marginBottom: '0.5rem', fontSize: '1.125rem', fontWeight: '500' }}>
+          Enterprise AI/ML Platform Demo
+        </p>
+        <p style={{ textAlign: 'center', color: '#6b7280', marginBottom: '1.5rem', fontSize: '0.875rem' }}>
           Choose your login method to access the management interface
         </p>
 
@@ -177,7 +180,7 @@ const Login = () => {
         )}
 
         {loginType === 'admin' && (
-          <div style={{ marginTop: '1.5rem', padding: '1rem', backgroundColor: '#fef3c7', borderRadius: '6px' }}>
+          <div style={{ marginTop: '1.5rem', padding: '1rem', backgroundColor: 'rgba(255, 203, 92, 0.1)', border: '1px solid #FFCB5C', borderRadius: '6px' }}>
             <h3 style={{ fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.5rem' }}>
               Admin Access Features:
             </h3>

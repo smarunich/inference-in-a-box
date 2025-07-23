@@ -50,7 +50,7 @@ code {
 }
 
 .header {
-  background: #0A0D0F; /* Tetrate Black for clean professional look */
+  background: linear-gradient(135deg, #FF5500 0%, #E64D00 100%); /* Tetrate Orange gradient */
   color: #FFFFFF; /* Tetrate White */
   padding: 1rem 2rem;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
@@ -420,12 +420,13 @@ code {
   display: flex;
   justify-content: center;
   align-items: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #F5F5F5 0%, #E5E7EB 100%);
 }
 
 .login-card {
   background: white;
   border-radius: 8px;
+  border-top: 4px solid #FF5500; /* Tetrate Orange accent */
   padding: 2rem;
   width: 100%;
   max-width: 400px;
