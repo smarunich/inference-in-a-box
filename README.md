@@ -901,7 +901,7 @@ kubectl get inferenceservice --all-namespaces
 ```
 
 ### Cleanup
-```sh
+```bash
 # Complete cleanup
 ./scripts/cleanup.sh
 
